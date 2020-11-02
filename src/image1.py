@@ -78,6 +78,15 @@ class image_converter:
       return np.array([cx, cy])
 
 
+  # Calculate the conversion from pixel to meter
+  def pixel2meter(self,image):
+      # Obtain the centre of each coloured blob
+      circle1Pos = self.detect_blue(image)
+      circle2Pos = self.detect_green(image)
+      # find the distance between two circles
+      dist = np.sum((circle1Pos - circle2Pos)**2)
+      return 3.5 / np.sqrt(dist)
+
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
     # Recieve the image
@@ -89,6 +98,18 @@ class image_converter:
     # Uncomment if you want to save the image
     #cv2.imwrite('image_copy.png', cv_image)
 
+    # # get join positions
+    # a = self.pixel2meter(self.cv_image1)
+    # joint2Pos = a * self.detect_blue(self.cv_image1)
+    # joint3Pos = joint2Pos
+    # joint4Pos = a * self.detect_green(self.cv_image1)
+
+    # # test angle
+    # ja1 = np.arctan2(joint2Pos[0]- joint4Pos[0], joint2Pos[1] - joint4Pos[1])
+    # print(ja1)
+
+
+
     im1=cv2.imshow('window1', self.cv_image1)
     cv2.waitKey(1)
 
@@ -98,21 +119,23 @@ class image_converter:
     except CvBridgeError as e:
       print(e)
 
-    # adjust joint angles
-    self.joint2=Float64()
-    self.joint2.data = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
-    self.joint3=Float64()
-    self.joint3.data = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())        
-    self.joint4=Float64()
-    self.joint4.data = (np.pi/2) * np.sin((np.pi/20) * rospy.get_time())
+    # # adjust joint angles using sinusoidal signals
+    # self.joint2=Float64()
+    # self.joint2.data = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
+    # self.joint3=Float64()
+    # self.joint3.data = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())        
+    # self.joint4=Float64()
+    # self.joint4.data = (np.pi/2) * np.sin((np.pi/20) * rospy.get_time())
 
-    # Publish the results
-    try:
-      self.robot_joint2_pub.publish(self.joint4)
-      self.robot_joint3_pub.publish(self.joint4) 
-      self.robot_joint4_pub.publish(self.joint4)
-    except CvBridgeError as e:
-      print(e)
+    # # Publish the results
+    # try:
+    #   self.robot_joint2_pub.publish(self.joint4)
+    #   self.robot_joint3_pub.publish(self.joint4) 
+    #   self.robot_joint4_pub.publish(self.joint4)
+    # except CvBridgeError as e:
+    #   print(e)
+
+
 
 # call the class
 def main(args):
