@@ -105,10 +105,9 @@ class image_converter:
     joint3Pos = joint2Pos
     joint4Pos = a * self.detect_green(self.cv_image2)
 
-    # test angle
-    ja1 = np.arctan2(joint2Pos[0]- joint4Pos[0], joint2Pos[1] - joint4Pos[1])
-    print(ja1)
-
+    # get angle
+    theta3 = np.arctan2(joint2Pos[0]- joint4Pos[0], joint2Pos[1] - joint4Pos[1])
+ 
 
     im2=cv2.imshow('window2', self.cv_image2)
     cv2.waitKey(1)
@@ -118,6 +117,22 @@ class image_converter:
       self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
     except CvBridgeError as e:
       print(e)
+
+
+    # adjust joint angle using sinusoidal signal
+    self.joint3=Float64()
+    inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
+    self.joint3.data = inputAngle3
+
+    # Publish the results
+    try:
+      self.robot_joint3_pub.publish(self.joint3)
+    except CvBridgeError as e:
+      print(e) 
+
+    # print joint angles
+    print("Joint Angle 3 Input: {}, Detected Angle: {}".format(inputAngle3, theta3))
+
 
 # call the class
 def main(args):
