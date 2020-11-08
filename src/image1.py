@@ -67,6 +67,16 @@ class image_converter:
       cy = int(M['m01'] / M['m00'])
       return np.array([cx, cy])
 
+  # Detecting the centre of the blue circle
+  def detect_orange(self,image):
+      mask = cv2.inRange(image, (0, 100, 200), (0, 200, 255))
+      kernel = np.ones((5, 5), np.uint8)
+      mask = cv2.dilate(mask, kernel, iterations=3)
+      M = cv2.moments(mask)
+      cx = int(M['m10'] / M['m00'])
+      cy = int(M['m01'] / M['m00'])
+      return np.array([cx, cy])
+
   # Detecting the centre of the yellow circle
   def detect_yellow(self,image):
       mask = cv2.inRange(image, (0, 100, 100), (0, 255, 255))
@@ -119,8 +129,6 @@ class image_converter:
     theta4 = np.arctan2(joint4Pos[0]- endEffectorPos[0], joint4Pos[1] - endEffectorPos[1])
 
 
-    im1=cv2.imshow('window1', self.cv_image1)
-    cv2.waitKey(1)
 
     # Publish the results
     try: 
@@ -144,9 +152,39 @@ class image_converter:
       print(e)
 
 
-    # print joint angles
-    print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
-    print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
+    # # print joint angles
+    # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
+    # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
+
+    # detect object
+    # gray = cv2.cvtColor(self.cv_image1, cv2.COLOR_BGR2GRAY)
+    # gray = cv2.medianBlur(gray, 5)
+
+    # Threshold the HSV image to get only blue colors
+    im = cv2.inRange(self.cv_image1, (50,50,100), (255,255,255))
+
+    res = cv2.bitwise_and(self.cv_image1, self.cv_image1, mask= im)
+
+    # rows = gray.shape[0]
+    # circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, rows / 8,
+    #                            param1=100, param2=30,
+    #                            minRadius=1, maxRadius=30)
+    
+    
+    # if circles is not None:
+    #     circles = np.uint16(np.around(circles))
+    #     for i in circles[0, :]:
+    #         center = (i[0], i[1])
+    #         # circle center
+    #         cv2.circle(self.cv_image1, center, 1, (0, 100, 100), 3)
+    #         # circle outline
+    #         radius = i[2]
+    #         cv2.circle(self.cv_image1, center, radius, (255, 0, 255), 3)
+
+
+    im1=cv2.imshow('window1', res)
+    cv2.waitKey(1)
+
 
 
 # call the class
