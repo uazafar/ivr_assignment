@@ -161,7 +161,7 @@ class image_converter:
     # gray = cv2.medianBlur(gray, 5)
 
     # Threshold the HSV image to get only blue colors
-    im = cv2.inRange(self.cv_image1, (50,50,100), (255,255,255))
+    im = cv2.inRange(self.cv_image1, (0,20,100), (40,100,150))
 
     res = cv2.bitwise_and(self.cv_image1, self.cv_image1, mask= im)
 
