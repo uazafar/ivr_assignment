@@ -106,6 +106,42 @@ class image_converter:
       dist = np.sum((circle1Pos - circle2Pos)**2)
       return 3.0 / np.sqrt(dist)
 
+
+  def get_object_coordinates(self, image):
+    # Threshold the HSV image to get only orange colors (of object)
+    mask = cv2.inRange(image, (0,20,100), (40,100,150))
+    res = cv2.bitwise_and(image, image, mask= mask)
+
+    # convert image to greyscale
+    gray = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
+    gray = cv2.medianBlur(gray, 5)
+
+    # create parameters for blob detector to detect circles
+    params = cv2.SimpleBlobDetector_Params()
+    params.filterByArea = False
+    params.filterByInertia = 1.0
+    params.filterByConvexity = False
+    params.filterByCircularity = 1.0
+    params.minCircularity = 0.87
+    params.maxCircularity = 1.00
+    detector = cv2.SimpleBlobDetector_create(params)
+
+    # convert black pixels to white and object to black
+    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY)
+    res[thresh == 0] = 255
+    res = cv2.bitwise_not(thresh)
+
+    # detect circles
+    keypoints = detector.detect(res)
+    if keypoints:
+      return keypoints[0].pt
+    else:
+      # return 0,0 if object cannot be detected
+      return [0,0]
+
+
+
+
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
     # Recieve the image
@@ -127,8 +163,6 @@ class image_converter:
     # get angles
     theta2 = np.arctan2(joint3Pos[0]- joint4Pos[0], joint3Pos[1] - joint4Pos[1])
     theta4 = np.arctan2(joint4Pos[0]- endEffectorPos[0], joint4Pos[1] - endEffectorPos[1])
-
-
 
     # Publish the results
     try: 
@@ -156,68 +190,15 @@ class image_converter:
     # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
     # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
 
+    # get position of circular object
+    objectPos = self.get_object_coordinates(self.cv_image1)
+    # angle between robot base frame and object
+    joint1Pos = self.detect_yellow(self.cv_image1)
+    robotBaseObjectTheta = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
+    print(robotBaseObjectTheta)
 
-
-    # Threshold the HSV image to get only blue colors
-    im = cv2.inRange(self.cv_image1, (0,20,100), (40,100,150))
-
-    res = cv2.bitwise_and(self.cv_image1, self.cv_image1, mask= im)
-
-
-    # detect object
-    gray = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
-    gray = cv2.medianBlur(gray, 5)
-
-    # rows = gray.shape[0]
-    # circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, rows / 8,
-    #                            param1=100, param2=30,
-    #                            minRadius=1, maxRadius=30)
-    
-    
-    # if circles is not None:
-    #     circles = np.uint16(np.around(circles))
-    #     for i in circles[0, :]:
-    #         center = (i[0], i[1])
-    #         # circle center
-    #         cv2.circle(self.cv_image1, center, 1, (0, 100, 100), 3)
-    #         # circle outline
-    #         radius = i[2]
-    #         cv2.circle(self.cv_image1, center, radius, (255, 0, 255), 3)
-
-
-    # im1=cv2.imshow('window1', res)
-    # cv2.waitKey(1)
-
-    # Set up the detector with default parameters.
-
-    # create the params and deactivate the 3 filters
-    params = cv2.SimpleBlobDetector_Params()
-    params.filterByArea = False
-    params.filterByInertia = False
-    params.filterByConvexity = False
-    detector = cv2.SimpleBlobDetector_create(params)
-
-    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY)
-    res[thresh == 0] = 255
-
-    res = cv2.bitwise_not(thresh)
-
-    # Detect blobs.
-    keypoints = detector.detect(res)
-    print(keypoints)
-    # Draw detected blobs as red circles.
-    # cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS ensures the size of the circle corresponds to the size of blob
-    im_with_keypoints = cv2.drawKeypoints(
-      res, 
-      keypoints, 
-      np.array([]), 
-      (0,0,255), 
-      cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-    # Show keypoints
-
-    cv2.imshow("Keypoints", im_with_keypoints)
+    im2=cv2.imshow('window2', self.cv_image1)
     cv2.waitKey(1)
-
 
 
 # call the class
