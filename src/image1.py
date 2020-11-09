@@ -156,14 +156,17 @@ class image_converter:
     # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
     # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
 
-    # detect object
-    # gray = cv2.cvtColor(self.cv_image1, cv2.COLOR_BGR2GRAY)
-    # gray = cv2.medianBlur(gray, 5)
+
 
     # Threshold the HSV image to get only blue colors
     im = cv2.inRange(self.cv_image1, (0,20,100), (40,100,150))
 
     res = cv2.bitwise_and(self.cv_image1, self.cv_image1, mask= im)
+
+
+    # detect object
+    gray = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
+    gray = cv2.medianBlur(gray, 5)
 
     # rows = gray.shape[0]
     # circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, rows / 8,
@@ -182,7 +185,37 @@ class image_converter:
     #         cv2.circle(self.cv_image1, center, radius, (255, 0, 255), 3)
 
 
-    im1=cv2.imshow('window1', res)
+    # im1=cv2.imshow('window1', res)
+    # cv2.waitKey(1)
+
+    # Set up the detector with default parameters.
+
+    # create the params and deactivate the 3 filters
+    params = cv2.SimpleBlobDetector_Params()
+    params.filterByArea = False
+    params.filterByInertia = False
+    params.filterByConvexity = False
+    detector = cv2.SimpleBlobDetector_create(params)
+
+    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY)
+    res[thresh == 0] = 255
+
+    res = cv2.bitwise_not(thresh)
+
+    # Detect blobs.
+    keypoints = detector.detect(res)
+    print(keypoints)
+    # Draw detected blobs as red circles.
+    # cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS ensures the size of the circle corresponds to the size of blob
+    im_with_keypoints = cv2.drawKeypoints(
+      res, 
+      keypoints, 
+      np.array([]), 
+      (0,0,255), 
+      cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+    # Show keypoints
+
+    cv2.imshow("Keypoints", im_with_keypoints)
     cv2.waitKey(1)
 
 
