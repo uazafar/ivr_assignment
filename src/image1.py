@@ -140,6 +140,47 @@ class image_converter:
       return [0,0]
 
 
+  def get_distance_base_to_object(self, joint1Pos, joint2Pos, objectPos):
+    if objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
+      # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
+      theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
+      # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
+      theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
+      theta3 = np.pi - theta1 - theta2
+      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+    elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] > joint2Pos[1]:
+      # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
+      theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
+      # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
+      theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
+      theta3 = np.pi - theta1 - theta2
+      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+    elif objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
+      # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
+      theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
+      # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
+      theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
+      theta3 = np.pi - theta1 - theta2
+      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+    elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
+      # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
+      theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
+      # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
+      theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
+      theta3 = np.pi - theta1 - theta2
+      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+    else:
+      distJoint1ToObject=-1
+
+    # calculate z and y lengths if distance of object is known:
+    if objectPos[0] > joint1Pos[0] and distJoint1ToObject != -1:
+      z = np.sin(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+      y = np.cos(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+    if objectPos[0] < joint1Pos[0] and distJoint1ToObject != 1:
+      z = np.sin((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+      y = np.cos((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+
+    return distJoint1ToObject, z, y
 
 
   # Recieve data from camera 1, process it, and publish
@@ -185,20 +226,27 @@ class image_converter:
     except CvBridgeError as e:
       print(e)
 
-
     # # print joint angles
     # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
     # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
 
     # get position of circular object
     objectPos = self.get_object_coordinates(self.cv_image1)
-    # angle between robot base frame and object
+    # position of first 2 joints
     joint1Pos = self.detect_yellow(self.cv_image1)
-    robotBaseObjectTheta = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
-    print(robotBaseObjectTheta)
+    joint2Pos = self.detect_blue(self.cv_image1)
+
+    # caculate object distance if object is visible and get z/y coordinates in meters:
+    if objectPos[0] != 0 and objectPos[1] != 0:
+      dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
+      print(z, y)
 
     im2=cv2.imshow('window2', self.cv_image1)
     cv2.waitKey(1)
+
+
+
+
 
 
 # call the class
