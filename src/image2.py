@@ -87,6 +87,81 @@ class image_converter:
       dist = np.sum((circle1Pos - circle2Pos)**2)
       return 3.5 / np.sqrt(dist)
 
+  def get_object_coordinates(self, image):
+    # Threshold the HSV image to get only orange colors (of object)
+    mask = cv2.inRange(image, (0,20,100), (40,100,150))
+    res = cv2.bitwise_and(image, image, mask= mask)
+
+    # convert image to greyscale
+    gray = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
+    gray = cv2.medianBlur(gray, 5)
+
+    # create parameters for blob detector to detect circles
+    params = cv2.SimpleBlobDetector_Params()
+    params.filterByArea = False
+    params.filterByInertia = 1.0
+    params.filterByConvexity = False
+    params.filterByCircularity = 1.0
+    params.minCircularity = 0.87
+    params.maxCircularity = 1.00
+    detector = cv2.SimpleBlobDetector_create(params)
+
+    # convert black pixels to white and object to black
+    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY)
+    res[thresh == 0] = 255
+    res = cv2.bitwise_not(thresh)
+
+    # detect circles
+    keypoints = detector.detect(res)
+    if keypoints:
+      return keypoints[0].pt
+    else:
+      # return 0,0 if object cannot be detected
+      return [0,0]
+
+
+  def get_distance_base_to_object(self, joint1Pos, joint2Pos, objectPos):
+    if objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
+      # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
+      theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
+      # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
+      theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
+      theta3 = np.pi - theta1 - theta2
+      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+    elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] > joint2Pos[1]:
+      # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
+      theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
+      # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
+      theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
+      theta3 = np.pi - theta1 - theta2
+      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+    elif objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
+      # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
+      theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
+      # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
+      theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
+      theta3 = np.pi - theta1 - theta2
+      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+    elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
+      # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
+      theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
+      # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
+      theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
+      theta3 = np.pi - theta1 - theta2
+      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+    else:
+      distJoint1ToObject=-1
+
+    # calculate z and x lengths if distance of object is known:
+    if objectPos[0] > joint1Pos[0] and distJoint1ToObject != -1:
+      z = np.sin(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+      x = np.cos(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+    if objectPos[0] < joint1Pos[0] and distJoint1ToObject != 1:
+      z = np.sin((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+      x = np.cos((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+
+    return distJoint1ToObject, z, x
+
   # Recieve data, process it, and publish
   def callback2(self,data):
     # Recieve the image
@@ -131,7 +206,19 @@ class image_converter:
       print(e) 
 
     # print joint angles
-    print("Joint Angle 3 Input: {}, Detected Angle: {}".format(inputAngle3, theta3))
+    # print("Joint Angle 3 Input: {}, Detected Angle: {}".format(inputAngle3, theta3))
+
+    # get position of circular object
+    objectPos = self.get_object_coordinates(self.cv_image2)
+    # position of first 2 joints
+    joint1Pos = self.detect_yellow(self.cv_image2)
+    joint2Pos = self.detect_blue(self.cv_image2)
+
+    # caculate object distance if object is visible and get z/x coordinates in meters:
+    if objectPos[0] != 0 and objectPos[1] != 0:
+      dist, z, x = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
+      print(z, x)
+
 
 
 # call the class
