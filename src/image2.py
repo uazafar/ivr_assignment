@@ -30,6 +30,12 @@ class image_converter:
     self.robot_joint3_pub = rospy.Publisher("/robot/joint3_position_controller/command", Float64, queue_size=10) 
     self.robot_joint4_pub = rospy.Publisher("/robot/joint4_position_controller/command", Float64, queue_size=10)   
 
+    # set up publisher   
+    # rospy.init_node('publisher_node',anonymous=True)
+    self.jointAngle3 = rospy.Publisher("jointAngle3", Float64, queue_size=10)
+    self.targetXPosEst = rospy.Publisher("targetXPosEst", Float64, queue_size=10)
+    self.rate = rospy.Rate(10) #hz
+    self.time = rospy.get_time()
 
   # In this method you can focus on detecting the centre of the red circle
   def detect_red(self,image):
@@ -156,10 +162,12 @@ class image_converter:
     if objectPos[0] > joint1Pos[0] and distJoint1ToObject != -1:
       z = np.sin(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
       x = np.cos(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-    if objectPos[0] < joint1Pos[0] and distJoint1ToObject != 1:
+    elif objectPos[0] < joint1Pos[0] and distJoint1ToObject != 1:
       z = np.sin((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-      x = np.cos((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-
+      x = np.cos((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject * -1
+    else:
+      z = 0.0
+      x = 0.0
     return distJoint1ToObject, z, x
 
   # Recieve data, process it, and publish
@@ -217,9 +225,15 @@ class image_converter:
     # caculate object distance if object is visible and get z/x coordinates in meters:
     if objectPos[0] != 0 and objectPos[1] != 0:
       dist, z, x = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
-      print(z, x)
+      # publish estimated position of target
+      self.package = Float64()
+      self.package.data = x
+      self.targetXPosEst.publish(self.package)
 
-
+    # publish joint angles
+    self.package = Float64()
+    self.package.data = theta3
+    self.jointAngle3.publish(self.package)
 
 # call the class
 def main(args):
