@@ -191,10 +191,6 @@ class image_converter:
     # get angle
     theta3 = np.arctan2(joint2Pos[0]- joint4Pos[0], joint2Pos[1] - joint4Pos[1])
  
-
-    im2=cv2.imshow('window2', self.cv_image2)
-    cv2.waitKey(1)
-
     # Publish the results
     try: 
       self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
@@ -222,18 +218,21 @@ class image_converter:
     joint1Pos = self.detect_yellow(self.cv_image2)
     joint2Pos = self.detect_blue(self.cv_image2)
 
-    # caculate object distance if object is visible and get z/x coordinates in meters:
-    if objectPos[0] != 0 and objectPos[1] != 0:
-      dist, z, x = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
-      # publish estimated position of target
-      self.package = Float64()
-      self.package.data = x
-      self.targetXPosEst.publish(self.package)
+    # caculate object distance and get z/x coordinates in meters:
+    dist, z, x = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
+    # publish estimated position of target
+    self.package = Float64()
+    self.package.data = x
+    self.targetXPosEst.publish(self.package)
 
     # publish joint angles
     self.package = Float64()
     self.package.data = theta3
     self.jointAngle3.publish(self.package)
+
+    im2=cv2.imshow('window2', self.cv_image2)
+    cv2.waitKey(1)
+
 
 # call the class
 def main(args):

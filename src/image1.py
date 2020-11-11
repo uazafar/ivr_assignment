@@ -34,6 +34,8 @@ class image_converter:
     # rospy.init_node('publisher_node',anonymous=True)
     self.jointAngle2 = rospy.Publisher("jointAngle2", Float64, queue_size=10)
     self.jointAngle4 = rospy.Publisher("jointAngle4", Float64, queue_size=10)
+    self.actualJointAngle2 = rospy.Publisher("actualJointAngle2", Float64, queue_size=10)
+    self.actualJointAngle4 = rospy.Publisher("actualJointAngle4", Float64, queue_size=10)
     self.targetZPosEst = rospy.Publisher("targetZPosEst", Float64, queue_size=10)
     self.targetYPosEst = rospy.Publisher("targetYPosEst", Float64, queue_size=10)
     self.rate = rospy.Rate(10) #hz
@@ -247,18 +249,8 @@ class image_converter:
     joint1Pos = self.detect_yellow(self.cv_image1)
     joint2Pos = self.detect_blue(self.cv_image1)
 
-    # caculate object distance if object is visible and get z/y coordinates in meters:
-    if objectPos[0] != 0 and objectPos[1] != 0:
-      dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
-
-    # publish joint angles
-    self.package = Float64()
-    self.package.data = theta2
-    self.jointAngle2.publish(self.package)
-    self.package = Float64()
-    self.package.data = theta4
-    self.jointAngle4.publish(self.package)
-    self.rate.sleep()
+    # caculate object distance and get z/y coordinates in meters:
+    dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
 
     # publish estimated position of target
     self.package = Float64()
@@ -267,6 +259,21 @@ class image_converter:
     self.package = Float64()
     self.package.data = y
     self.targetYPosEst.publish(self.package)
+
+    # publish actual and detected joint angles
+    self.package = Float64()
+    self.package.data = theta2
+    self.jointAngle2.publish(self.package)
+    self.package = Float64()
+    self.package.data = theta4
+    self.jointAngle4.publish(self.package)
+    self.package = Float64()
+    self.package.data = inputAngle2
+    self.actualJointAngle2.publish(self.package)    
+    self.package = Float64()
+    self.package.data = inputAngle4
+    self.actualJointAngle4.publish(self.package)  
+
     self.rate.sleep()
 
     im2=cv2.imshow('window2', self.cv_image1)
