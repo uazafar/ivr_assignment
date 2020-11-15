@@ -9,6 +9,7 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float64MultiArray, Float64
 from cv_bridge import CvBridge, CvBridgeError
+import message_filters
 
 
 class image_converter:
@@ -20,7 +21,16 @@ class image_converter:
     # initialize a publisher to send images from camera1 to a topic named image_topic1
     self.image_pub1 = rospy.Publisher("image_topic1",Image, queue_size = 1)
     # initialize a subscriber to recieve messages rom a topic named /robot/camera1/image_raw and use callback function to recieve data
+    
     self.image_sub1 = rospy.Subscriber("/camera1/robot/image_raw",Image,self.callback1)
+    self.jointAngle3 = rospy.Subscriber("/jointAngle3", Float64, self.callback2)
+    self.jointAngle3Data = Float64()
+
+    # self.image_sub1 = message_filters.Subscriber("/camera1/robot/image_raw",Image)
+    # self.jointAngle3 = message_filters.Subscriber("/jointAngle3",Float64)
+    # self.ts = message_filters.TimeSynchronizer([self.image_sub1, self.jointAngle3], 10)
+    # self.ts.registerCallback(self.callback1)
+
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
 
@@ -40,6 +50,13 @@ class image_converter:
     self.targetYPosEst = rospy.Publisher("targetYPosEst", Float64, queue_size=10)
     self.rate = rospy.Rate(10) #hz
     self.time = rospy.get_time()
+    # rospy.init_node('subscriber_node', anonymous = True)
+
+  def callback2(self, msg):
+    try:
+      self.jointAngle3Data = msg.data
+    except CvBridgeError as e:
+      print(e)
 
   # In this method you can focus on detecting the centre of the red circle
   def detect_red(self,image):
@@ -198,6 +215,9 @@ class image_converter:
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
+    # self.callback2(self.jointAngle3)
+    print(self.jointAngle3Data)
+
     # Recieve the image
     try:
       self.cv_image1 = self.bridge.imgmsg_to_cv2(data, "bgr8")
@@ -228,6 +248,9 @@ class image_converter:
     self.joint2=Float64()
     inputAngle2 = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
     self.joint2.data = inputAngle2
+    # self.joint3=Float64()
+    # inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
+    # self.joint3.data = inputAngle3    
     self.joint4=Float64()
     inputAngle4 = (np.pi/2) * np.sin((np.pi/20) * rospy.get_time())
     self.joint4.data = inputAngle4
@@ -235,6 +258,7 @@ class image_converter:
     # Publish the results
     try:
       self.robot_joint2_pub.publish(self.joint2)
+      # self.robot_joint3_pub.publish(self.joint3)
       self.robot_joint4_pub.publish(self.joint4)
     except CvBridgeError as e:
       print(e)
@@ -267,14 +291,13 @@ class image_converter:
     self.package = Float64()
     self.package.data = theta4
     self.jointAngle4.publish(self.package)
+
     self.package = Float64()
     self.package.data = inputAngle2
     self.actualJointAngle2.publish(self.package)    
     self.package = Float64()
     self.package.data = inputAngle4
     self.actualJointAngle4.publish(self.package)  
-
-    self.rate.sleep()
 
     im2=cv2.imshow('window2', self.cv_image1)
     cv2.waitKey(1)

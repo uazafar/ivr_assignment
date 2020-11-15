@@ -34,6 +34,7 @@ class image_converter:
     # rospy.init_node('publisher_node',anonymous=True)
     self.jointAngle3 = rospy.Publisher("jointAngle3", Float64, queue_size=10)
     self.targetXPosEst = rospy.Publisher("targetXPosEst", Float64, queue_size=10)
+    self.actualJointAngle3 = rospy.Publisher("actualJointAngle3", Float64, queue_size=10)
     self.rate = rospy.Rate(10) #hz
     self.time = rospy.get_time()
 
@@ -220,6 +221,7 @@ class image_converter:
 
     # caculate object distance and get z/x coordinates in meters:
     dist, z, x = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
+
     # publish estimated position of target
     self.package = Float64()
     self.package.data = x
@@ -229,6 +231,10 @@ class image_converter:
     self.package = Float64()
     self.package.data = theta3
     self.jointAngle3.publish(self.package)
+
+    self.package = Float64()
+    self.package.data = inputAngle3
+    self.actualJointAngle3.publish(self.package)   
 
     im2=cv2.imshow('window2', self.cv_image2)
     cv2.waitKey(1)
