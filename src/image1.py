@@ -21,6 +21,7 @@ class image_converter:
     self.greenCircleCache = []
     self.redCircleCache = []
     self.blueCircleCache = []
+    self.yellowCircleCache = []
     self.objectCache = []
 
     # initialize the node named image_processing
@@ -65,6 +66,13 @@ class image_converter:
     else:
       self.blueCircleCache = []
       self.blueCircleCache.append(pos)
+
+  def cacheYellowCirclePos(self, pos):
+    if len(self.yellowCircleCache) < 1000:
+      self.yellowCircleCache.append(pos)
+    else:
+      self.yellowCircleCache = []
+      self.yellowCircleCache.append(pos)
 
   def cacheGreenCirclePos(self, pos):
     if len(self.greenCircleCache) < 1000:
@@ -257,12 +265,48 @@ class image_converter:
       ])
     return matrix
 
+  def transformA2_A1(self, theta):
+    matrix = np.array(
+      [
+      [np.cos(theta), -np.sin(theta), 0, 2.5*np.cos(theta)], 
+      [np.sin(theta), 0, np.cos(theta), 2.5*np.sin(theta)], 
+      [0, -1, 0, 0], 
+      [0, 0, 0, 1]
+      ])
+    return matrix
+
+  def transformA3_A2(self, theta):
+    matrix = np.array(
+      [
+      [np.cos(theta), 0, np.sin(theta), 0], 
+      [np.sin(theta), 0, -np.cos(theta), 0], 
+      [0, 1, 0, 0], 
+      [0, 0, 0, 1]
+      ])
+    return matrix
+
+  def transformA4_A3(self, theta):
+    matrix = np.array(
+      [
+      [np.cos(theta), 0, -np.sin(theta), 3.5*np.cos(theta)], 
+      [np.sin(theta), 0, np.cos(theta), 3.5*np.sin(theta)], 
+      [0, -1, 0, 0], 
+      [0, 0, 0, 1]
+      ])
+    return matrix
+
+  def transformA5_A4(self):
+    matrix = np.array(
+      [
+      [1, 0, 0, 3], 
+      [0, 1, 0, 0], 
+      [0, 0, 1, 0], 
+      [0, 0, 0, 1]
+      ])
+    return matrix    
+
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
-
-    # get joint angle 3 from topic
-    # self.callback2(self.jointAngle3)
-    # print(self.jointAngle3Data)
 
     # Recieve the image
     try:
@@ -303,38 +347,40 @@ class image_converter:
 
     # comment out sinusoids for section 3.1
     # adjust joint angles using sinusoidal signals
-    self.joint2=Float64()
-    inputAngle2 = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
-    self.joint2.data = inputAngle2
-    self.joint3=Float64()
-    inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
-    self.joint3.data = inputAngle3    
-    self.joint4=Float64()
-    inputAngle4 = (np.pi/2) * np.sin((np.pi/20) * rospy.get_time())
-    self.joint4.data = inputAngle4
+    # self.joint2=Float64()
+    # inputAngle2 = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
+    # self.joint2.data = inputAngle2
+    # self.joint3=Float64()
+    # inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
+    # self.joint3.data = inputAngle3    
+    # # get joint angle 3 from topic if being driven from image2.py
+    # # inputAngle3 = self.jointAngle3Data 
 
-    # Publish the results
-    try:
-      self.robot_joint2_pub.publish(self.joint2)
-      self.robot_joint3_pub.publish(self.joint3)
-      self.robot_joint4_pub.publish(self.joint4)
-    except CvBridgeError as e:
-      print(e)
+    # self.joint4=Float64()
+    # inputAngle4 = (np.pi/2) * np.sin((np.pi/20) * rospy.get_time())
+    # self.joint4.data = inputAngle4
 
-    # publish actual and detected joint angles
-    self.package = Float64()
-    self.package.data = theta2
-    self.jointAngle2.publish(self.package)
-    self.package = Float64()
-    self.package.data = theta4
-    self.jointAngle4.publish(self.package)
+    # # Publish the results
+    # try:
+    #   self.robot_joint2_pub.publish(self.joint2)
+    #   # self.robot_joint3_pub.publish(self.joint3)
+    #   self.robot_joint4_pub.publish(self.joint4)
+    # except CvBridgeError as e:
+    #   print(e)
 
-    self.package = Float64()
-    self.package.data = inputAngle2
-    self.actualJointAngle2.publish(self.package)    
-    self.package = Float64()
-    self.package.data = inputAngle4
-    self.actualJointAngle4.publish(self.package)      
+    # # publish actual and detected joint angles
+    # self.package = Float64()
+    # self.package.data = theta2
+    # self.jointAngle2.publish(self.package)
+    # self.package = Float64()
+    # self.package.data = theta4
+    # self.jointAngle4.publish(self.package)
+    # self.package = Float64()
+    # self.package.data = inputAngle2
+    # self.actualJointAngle2.publish(self.package)    
+    # self.package = Float64()
+    # self.package.data = inputAngle4
+    # self.actualJointAngle4.publish(self.package)      
 
     # print joint angles
     # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
@@ -347,7 +393,11 @@ class image_converter:
     except:
       objectPos = self.objectCache[-1]
     # position of first joint
-    joint1Pos = self.detect_yellow(self.cv_image1)
+    try:
+      joint1Pos = self.detect_yellow(self.cv_image1)
+      self.cacheYellowCirclePos(joint1Pos)
+    except:
+      joint1Pos = self.yellowCircleCache[-1]
 
     # caculate object distance and get z/y coordinates in meters:
     dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
@@ -359,6 +409,14 @@ class image_converter:
     self.package = Float64()
     self.package.data = y
     self.targetYPosEst.publish(self.package)
+
+    matrix1 = self.transformA1_A0(0)
+    matrix2 = self.transformA2_A1(0)
+    matrix3 = self.transformA3_A2(0)
+    matrix4 = self.transformA4_A3(0)
+    matrix5 = self.transformA5_A4()
+    transformMatrix = matrix1 @ matrix2 @ matrix3 @ matrix4 @ matrix5
+    print(transformMatrix)
 
 
     im2=cv2.imshow('window2', self.cv_image1)

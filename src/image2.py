@@ -20,6 +20,7 @@ class image_converter:
     self.greenCircleCache = []
     self.redCircleCache = []
     self.blueCircleCache = []
+    self.yellowCircleCache = []
     self.objectCache = []
 
     # initialize the node named image_processing
@@ -52,6 +53,13 @@ class image_converter:
     else:
       self.blueCircleCache = []
       self.blueCircleCache.append(pos)
+
+  def cacheYellowCirclePos(self, pos):
+    if len(self.yellowCircleCache) < 1000:
+      self.yellowCircleCache.append(pos)
+    else:
+      self.yellowCircleCache = []
+      self.yellowCircleCache.append(pos)
 
   def cacheGreenCirclePos(self, pos):
     if len(self.greenCircleCache) < 1000:
@@ -221,9 +229,17 @@ class image_converter:
 
 
     # get join positions
-    joint2Pos = self.detect_blue(self.cv_image2)
+    try:
+      joint2Pos = self.detect_blue(self.cv_image2)
+      self.cacheBlueCirclePos(joint2Pos)
+    except:
+      joint2Pos = self.blueCircleCache[-1]
     joint3Pos = joint2Pos
-    joint4Pos = self.detect_green(self.cv_image2)
+    try:
+      joint4Pos =  self.detect_green(self.cv_image2)
+      self.cacheGreenCirclePos(joint4Pos)
+    except:
+      joint4Pos = self.greenCircleCache[-1]
 
     # get angle
     theta3 = np.arctan2(joint2Pos[0]- joint4Pos[0], joint2Pos[1] - joint4Pos[1])*-1
@@ -247,30 +263,37 @@ class image_converter:
       print(e) 
 
     # print joint angles
-    print("Joint Angle 3 Input: {}, Detected Angle: {}".format(inputAngle3, theta3))
+    print(joint2Pos[0], joint4Pos[0], joint2Pos[1], joint4Pos[1])
+    # print("Joint Angle 3 Input: {}, Detected Angle: {}".format(inputAngle3, theta3))
 
-    # # get position of circular object
-    # objectPos = self.get_object_coordinates(self.cv_image2)
-    # # position of first 2 joints
-    # joint1Pos = self.detect_yellow(self.cv_image2)
-    # joint2Pos = self.detect_blue(self.cv_image2)
+    # get position of circular object
+    try:
+      objectPos = self.get_object_coordinates(self.cv_image2)
+      self.cacheObjectPos(objectPos)
+    except:
+      objectPos = self.objectCache[-1]
+    # position of first joint
+    try:
+      joint1Pos = self.detect_yellow(self.cv_image2)
+      self.cacheYellowCirclePos(joint1Pos)
+    except:
+      joint1Pos = self.yellowCircleCache[-1]
 
-    # # caculate object distance and get z/x coordinates in meters:
-    # dist, z, x = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
+    # caculate object distance and get z/x coordinates in meters:
+    dist, z, x = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
 
-    # # publish estimated position of target
-    # self.package = Float64()
-    # self.package.data = x
-    # self.targetXPosEst.publish(self.package)
+    # publish estimated position of target
+    self.package = Float64()
+    self.package.data = x
+    self.targetXPosEst.publish(self.package)
 
-    # # publish joint angles
-    # self.package = Float64()
-    # self.package.data = theta3
-    # self.jointAngle3.publish(self.package)
-
-    # self.package = Float64()
-    # self.package.data = inputAngle3
-    # self.actualJointAngle3.publish(self.package)   
+    # publish actual and detected joint angles
+    self.package = Float64()
+    self.package.data = theta3
+    self.jointAngle3.publish(self.package)
+    self.package = Float64()
+    self.package.data = inputAngle3
+    self.actualJointAngle3.publish(self.package)   
 
     im2=cv2.imshow('window2', self.cv_image2)
     cv2.waitKey(1)
