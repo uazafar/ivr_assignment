@@ -190,7 +190,7 @@ class image_converter:
     joint4Pos = a * self.detect_green(self.cv_image2)
 
     # get angle
-    theta3 = np.arctan2(joint2Pos[0]- joint4Pos[0], joint2Pos[1] - joint4Pos[1])
+    theta3 = np.arctan2(joint2Pos[0]- joint4Pos[0], joint2Pos[1] - joint4Pos[1])*-1
  
     # Publish the results
     try: 
@@ -211,7 +211,7 @@ class image_converter:
       print(e) 
 
     # print joint angles
-    # print("Joint Angle 3 Input: {}, Detected Angle: {}".format(inputAngle3, theta3))
+    print("Joint Angle 3 Input: {}, Detected Angle: {}".format(inputAngle3, theta3))
 
     # get position of circular object
     objectPos = self.get_object_coordinates(self.cv_image2)

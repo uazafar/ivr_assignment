@@ -16,6 +16,12 @@ class image_converter:
 
   # Defines publisher and subscriber
   def __init__(self):
+
+    # define a cache to store positions of circles
+    self.greenCircleCache = []
+    self.redCircleCache = []
+    self.blueCircleCache = []
+
     # initialize the node named image_processing
     rospy.init_node('image_processing', anonymous=True)
     # initialize a publisher to send images from camera1 to a topic named image_topic1
@@ -50,7 +56,28 @@ class image_converter:
     self.targetYPosEst = rospy.Publisher("targetYPosEst", Float64, queue_size=10)
     self.rate = rospy.Rate(10) #hz
     self.time = rospy.get_time()
-    # rospy.init_node('subscriber_node', anonymous = True)
+
+
+  def cacheBlueCirclePos(self, pos):
+    if len(self.blueCircleCache) < 1000:
+      self.blueCircleCache.append(pos)
+    else:
+      self.blueCircleCache = []
+      self.blueCircleCache.append(pos)
+
+  def cacheGreenCirclePos(self, pos):
+    if len(self.greenCircleCache) < 1000:
+      self.greenCircleCache.append(pos)
+    else:
+      self.greenCircleCache = []
+      self.greenCircleCache.append(pos)
+
+  def cacheRedCirclePos(self, pos):
+    if len(self.redCircleCache) < 1000:
+      self.redCircleCache.append(pos)
+    else:
+      self.redCircleCache = []
+      self.redCircleCache.append(pos)
 
   def callback2(self, msg):
     try:
@@ -215,8 +242,10 @@ class image_converter:
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
+
+    # get joint angle 3 from topic
     # self.callback2(self.jointAngle3)
-    print(self.jointAngle3Data)
+    # print(self.jointAngle3Data)
 
     # Recieve the image
     try:
@@ -227,12 +256,23 @@ class image_converter:
     # Uncomment if you want to save the image
     #cv2.imwrite('image_copy.png', cv_image)
 
-    # get join positions
-    a = self.pixel2meter(self.cv_image1)
-    joint2Pos = a * self.detect_blue(self.cv_image1)
+    # get joint positions
+    try:
+      joint2Pos = self.detect_blue(self.cv_image1)
+      self.cacheBlueCirclePos(joint2Pos)
+    except:
+      joint2Pos = self.blueCircleCache[-1]
     joint3Pos = joint2Pos
-    joint4Pos = a * self.detect_green(self.cv_image1)
-    endEffectorPos = self.pixel2meterEndEff(self.cv_image1) * self.detect_red(self.cv_image1)
+    try:
+      joint4Pos =  self.detect_green(self.cv_image1)
+      self.cacheGreenCirclePos(joint4Pos)
+    except:
+      joint4Pos = self.greenCircleCache[-1]
+    try:
+      endEffectorPos = self.detect_red(self.cv_image1)
+      self.cacheRedCirclePos(endEffectorPos)
+    except:
+      endEffectorPos = self.redCircleCache[-1]
 
     # get angles
     theta2 = np.arctan2(joint3Pos[0]- joint4Pos[0], joint3Pos[1] - joint4Pos[1])
@@ -248,9 +288,9 @@ class image_converter:
     self.joint2=Float64()
     inputAngle2 = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
     self.joint2.data = inputAngle2
-    # self.joint3=Float64()
-    # inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
-    # self.joint3.data = inputAngle3    
+    self.joint3=Float64()
+    inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
+    self.joint3.data = inputAngle3    
     self.joint4=Float64()
     inputAngle4 = (np.pi/2) * np.sin((np.pi/20) * rospy.get_time())
     self.joint4.data = inputAngle4
@@ -258,12 +298,12 @@ class image_converter:
     # Publish the results
     try:
       self.robot_joint2_pub.publish(self.joint2)
-      # self.robot_joint3_pub.publish(self.joint3)
+      self.robot_joint3_pub.publish(self.joint3)
       self.robot_joint4_pub.publish(self.joint4)
     except CvBridgeError as e:
       print(e)
 
-    # # print joint angles
+    # print joint angles
     # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
     # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
 
