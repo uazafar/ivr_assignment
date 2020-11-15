@@ -21,6 +21,7 @@ class image_converter:
     self.greenCircleCache = []
     self.redCircleCache = []
     self.blueCircleCache = []
+    self.objectCache = []
 
     # initialize the node named image_processing
     rospy.init_node('image_processing', anonymous=True)
@@ -29,7 +30,7 @@ class image_converter:
     # initialize a subscriber to recieve messages rom a topic named /robot/camera1/image_raw and use callback function to recieve data
     
     self.image_sub1 = rospy.Subscriber("/camera1/robot/image_raw",Image,self.callback1)
-    self.jointAngle3 = rospy.Subscriber("/jointAngle3", Float64, self.callback2)
+    self.jointAngle3 = rospy.Subscriber("/jointAngle3", Float64, self.getJointAngle3)
     self.jointAngle3Data = Float64()
 
     # self.image_sub1 = message_filters.Subscriber("/camera1/robot/image_raw",Image)
@@ -79,9 +80,16 @@ class image_converter:
       self.redCircleCache = []
       self.redCircleCache.append(pos)
 
-  def callback2(self, msg):
+  def cacheObjectPos(self, pos):
+    if len(self.objectCache) < 1000:
+      self.objectCache.append(pos)
+    else:
+      self.objectCache = []
+      self.objectCache.append(pos)
+
+  def getJointAngle3(self, data):
     try:
-      self.jointAngle3Data = msg.data
+      self.jointAngle3Data = data.data
     except CvBridgeError as e:
       print(e)
 
@@ -239,6 +247,15 @@ class image_converter:
       y = 0.0
     return distJoint1ToObject, z, y
 
+  def transformA1_A0(self, theta):
+    matrix = np.array(
+      [
+      [np.cos(theta), 0, np.sin(theta), 0], 
+      [np.sin(theta), 0, -np.cos(theta), 0], 
+      [0, 1, 0, 0], 
+      [0, 0, 0, 1]
+      ])
+    return matrix
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
@@ -276,7 +293,7 @@ class image_converter:
 
     # get angles
     theta2 = np.arctan2(joint3Pos[0]- joint4Pos[0], joint3Pos[1] - joint4Pos[1])
-    theta4 = np.arctan2(joint4Pos[0]- endEffectorPos[0], joint4Pos[1] - endEffectorPos[1])
+    theta4 = np.arctan2(joint4Pos[0]- endEffectorPos[0], joint4Pos[1] - endEffectorPos[1]) - theta2
 
     # Publish the results
     try: 
@@ -284,6 +301,7 @@ class image_converter:
     except CvBridgeError as e:
       print(e)
 
+    # comment out sinusoids for section 3.1
     # adjust joint angles using sinusoidal signals
     self.joint2=Float64()
     inputAngle2 = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
@@ -303,27 +321,6 @@ class image_converter:
     except CvBridgeError as e:
       print(e)
 
-    # print joint angles
-    # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
-    # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
-
-    # get position of circular object
-    objectPos = self.get_object_coordinates(self.cv_image1)
-    # position of first 2 joints
-    joint1Pos = self.detect_yellow(self.cv_image1)
-    joint2Pos = self.detect_blue(self.cv_image1)
-
-    # caculate object distance and get z/y coordinates in meters:
-    dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
-
-    # publish estimated position of target
-    self.package = Float64()
-    self.package.data = z
-    self.targetZPosEst.publish(self.package)
-    self.package = Float64()
-    self.package.data = y
-    self.targetYPosEst.publish(self.package)
-
     # publish actual and detected joint angles
     self.package = Float64()
     self.package.data = theta2
@@ -337,7 +334,32 @@ class image_converter:
     self.actualJointAngle2.publish(self.package)    
     self.package = Float64()
     self.package.data = inputAngle4
-    self.actualJointAngle4.publish(self.package)  
+    self.actualJointAngle4.publish(self.package)      
+
+    # print joint angles
+    # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
+    # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
+
+    # get position of circular object
+    try:
+      objectPos = self.get_object_coordinates(self.cv_image1)
+      self.cacheObjectPos(objectPos)
+    except:
+      objectPos = self.objectCache[-1]
+    # position of first joint
+    joint1Pos = self.detect_yellow(self.cv_image1)
+
+    # caculate object distance and get z/y coordinates in meters:
+    dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
+
+    # publish estimated position of target
+    self.package = Float64()
+    self.package.data = z
+    self.targetZPosEst.publish(self.package)
+    self.package = Float64()
+    self.package.data = y
+    self.targetYPosEst.publish(self.package)
+
 
     im2=cv2.imshow('window2', self.cv_image1)
     cv2.waitKey(1)
