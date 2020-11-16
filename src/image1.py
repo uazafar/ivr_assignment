@@ -204,10 +204,11 @@ class image_converter:
     # detect circles
     keypoints = detector.detect(res)
     if keypoints:
+      self.cacheObjectPos(keypoints[0].pt)
       return keypoints[0].pt
     else:
       # return 0,0 if object cannot be detected
-      return [0,0]
+      return self.objectCache[-1]
 
 
   def get_distance_base_to_object(self, joint1Pos, joint2Pos, objectPos):
@@ -254,56 +255,35 @@ class image_converter:
       z = 0.0
       y = 0.0
     return distJoint1ToObject, z, y
+ 
 
-  def transformA1_A0(self, theta):
-    matrix = np.array(
-      [
-      [np.cos(theta), 0, np.sin(theta), 0], 
-      [np.sin(theta), 0, -np.cos(theta), 0], 
+  def transform(self, theta, d, a, alpha):
+    rZ = np.array([
+      [np.cos(theta), -np.sin(theta), 0, 0], 
+      [np.sin(theta), np.cos(theta), 0, 0], 
+      [0, 0, 1, 0], 
+      [0, 0, 0, 1]])  
+
+    dZ = np.array([
+      [1, 0, 0, 0], 
       [0, 1, 0, 0], 
-      [0, 0, 0, 1]
-      ])
-    return matrix
+      [0, 0, 1, d], 
+      [0, 0, 0, 1]])  
 
-  def transformA2_A1(self, theta):
-    matrix = np.array(
-      [
-      [np.cos(theta), -np.sin(theta), 0, 2.5*np.cos(theta)], 
-      [np.sin(theta), 0, np.cos(theta), 2.5*np.sin(theta)], 
-      [0, -1, 0, 0], 
-      [0, 0, 0, 1]
-      ])
-    return matrix
-
-  def transformA3_A2(self, theta):
-    matrix = np.array(
-      [
-      [np.cos(theta), 0, np.sin(theta), 0], 
-      [np.sin(theta), 0, -np.cos(theta), 0], 
-      [0, 1, 0, 0], 
-      [0, 0, 0, 1]
-      ])
-    return matrix
-
-  def transformA4_A3(self, theta):
-    matrix = np.array(
-      [
-      [np.cos(theta), 0, -np.sin(theta), 3.5*np.cos(theta)], 
-      [np.sin(theta), 0, np.cos(theta), 3.5*np.sin(theta)], 
-      [0, -1, 0, 0], 
-      [0, 0, 0, 1]
-      ])
-    return matrix
-
-  def transformA5_A4(self):
-    matrix = np.array(
-      [
-      [1, 0, 0, 3], 
+    dA = np.array([
+      [1, 0, 0, a], 
       [0, 1, 0, 0], 
       [0, 0, 1, 0], 
-      [0, 0, 0, 1]
-      ])
-    return matrix    
+      [0, 0, 0, 1]])  
+
+    rX = np.array([
+      [1, 0, 0, 0], 
+      [0, np.cos(alpha), -np.sin(alpha), 0], 
+      [0, np.sin(alpha), np.cos(alpha), 0], 
+      [0, 0, 0, 1]])  
+
+    return rZ @ dZ @ dA @ rX
+   
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
@@ -389,7 +369,6 @@ class image_converter:
     # get position of circular object
     try:
       objectPos = self.get_object_coordinates(self.cv_image1)
-      self.cacheObjectPos(objectPos)
     except:
       objectPos = self.objectCache[-1]
     # position of first joint
@@ -401,6 +380,7 @@ class image_converter:
 
     # caculate object distance and get z/y coordinates in meters:
     dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
+    # print(z,y)
 
     # publish estimated position of target
     self.package = Float64()
@@ -410,13 +390,13 @@ class image_converter:
     self.package.data = y
     self.targetYPosEst.publish(self.package)
 
-    matrix1 = self.transformA1_A0(0)
-    matrix2 = self.transformA2_A1(0)
-    matrix3 = self.transformA3_A2(0)
-    matrix4 = self.transformA4_A3(0)
-    matrix5 = self.transformA5_A4()
-    transformMatrix = matrix1 @ matrix2 @ matrix3 @ matrix4 @ matrix5
-    print(transformMatrix)
+    endEffectorPosInBase = self.transform(0, 0, 0, np.pi/2) @ \
+      self.transform(-np.pi/2, 0, -2.5, -np.pi/2) @ \
+      self.transform(0, 0, 0, np.pi/2) @ \
+      self.transform(0, 0, -3.5, -np.pi/2) @ \
+      self.transform(0, 0, -3, 0)
+
+    print(endEffectorPosInBase)
 
 
     im2=cv2.imshow('window2', self.cv_image1)
