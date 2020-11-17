@@ -131,13 +131,61 @@ class image_converter:
 
 
   # Calculate the conversion from pixel to meter
-  def pixel2meter(self,image):
+  def pixel2meterYellowToBlue(self,image):
       # Obtain the centre of each coloured blob
-      circle1Pos = self.detect_blue(image)
-      circle2Pos = self.detect_green(image)
+      try:
+        circle1Pos = self.detect_yellow(image)
+        self.cacheYellowCirclePos(circle1Pos)
+      except:
+        circle1Pos = self.yellowCircleCache[-1]
+
+      try:
+        circle2Pos = self.detect_blue(image)
+        self.cacheBlueCirclePos(circle2Pos)
+      except:
+        circle2Pos = self.blueCircleCache[-1]
+
+      # find the distance between two circles
+      dist = np.sum((circle1Pos - circle2Pos)**2)
+      return 2.5 / np.sqrt(dist)
+
+  # Calculate the conversion from pixel to meter
+  def pixel2meterBlueToGreen(self,image):
+
+      try:
+        circle1Pos = self.detect_blue(image)
+        self.cacheBlueCirclePos(circle1Pos)
+      except:
+        circle1Pos = self.blueCircleCache[-1]
+
+      try:
+        circle2Pos = self.detect_green(image)
+        self.cacheGreenCirclePos(circle2Pos)
+      except:
+        circle2Pos = self.greenCircleCache[-1]        
+
       # find the distance between two circles
       dist = np.sum((circle1Pos - circle2Pos)**2)
       return 3.5 / np.sqrt(dist)
+
+  # Calculate the conversion from pixel to meter
+  def pixel2meterGreenToRed(self,image):
+
+      try:
+        circle1Pos = self.detect_green(image)
+        self.cacheGreenCirclePos(circle1Pos)
+      except:
+        circle1Pos = self.greenCircleCache[-1] 
+
+      try:
+        circle2Pos = self.detect_red(image)
+        self.cacheRedCirclePos(circle2Pos)
+      except:
+        circle2Pos = self.redCircleCache[-1]  
+
+      # find the distance between two circles
+      dist = np.sum((circle1Pos - circle2Pos)**2)
+      return 3.0 / np.sqrt(dist)
 
   def get_object_coordinates(self, image):
     # Threshold the HSV image to get only orange colors (of object)
@@ -228,18 +276,24 @@ class image_converter:
     #cv2.imwrite('image_copy.png', cv_image)
 
 
-    # get join positions
+    # adjust joint angle using sinusoidal signal
+    self.joint3=Float64()
+    inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
+    self.joint3.data = inputAngle3
+
+    # get joint positions
     try:
       joint2Pos = self.detect_blue(self.cv_image2)
       self.cacheBlueCirclePos(joint2Pos)
     except:
       joint2Pos = self.blueCircleCache[-1]
-    joint3Pos = joint2Pos
+    joint2Pos = self.pixel2meterBlueToGreen(self.cv_image2) * joint2Pos
     try:
       joint4Pos =  self.detect_green(self.cv_image2)
       self.cacheGreenCirclePos(joint4Pos)
     except:
       joint4Pos = self.greenCircleCache[-1]
+    joint4Pos = self.pixel2meterBlueToGreen(self.cv_image2) * joint4Pos
 
     # get angle
     theta3 = np.arctan2(joint2Pos[0]- joint4Pos[0], joint2Pos[1] - joint4Pos[1])*-1
@@ -250,11 +304,8 @@ class image_converter:
     except CvBridgeError as e:
       print(e)
 
-
-    # adjust joint angle using sinusoidal signal
-    self.joint3=Float64()
-    inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
-    self.joint3.data = inputAngle3
+    # print joint angles
+    # print("Joint Angle 3 Input: {}, Detected Angle: {}".format(inputAngle3, theta3))
 
     # Publish the results
     try:
@@ -262,9 +313,6 @@ class image_converter:
     except CvBridgeError as e:
       print(e) 
 
-    # print joint angles
-    print(joint2Pos[0], joint4Pos[0], joint2Pos[1], joint4Pos[1])
-    # print("Joint Angle 3 Input: {}, Detected Angle: {}".format(inputAngle3, theta3))
 
     # get position of circular object
     try:

@@ -17,6 +17,10 @@ class image_converter:
   # Defines publisher and subscriber
   def __init__(self):
 
+    # define flags to execute specific sections of assignment
+    self.section2Flag = 1
+    self.section3Flag = 0
+
     # define a cache to store positions of circles
     self.greenCircleCache = []
     self.redCircleCache = []
@@ -159,19 +163,58 @@ class image_converter:
 
 
   # Calculate the conversion from pixel to meter
-  def pixel2meter(self,image):
+  def pixel2meterYellowToBlue(self,image):
       # Obtain the centre of each coloured blob
-      circle1Pos = self.detect_blue(image)
-      circle2Pos = self.detect_green(image)
+      try:
+        circle1Pos = self.detect_yellow(image)
+        self.cacheYellowCirclePos(circle1Pos)
+      except:
+        circle1Pos = self.yellowCircleCache[-1]
+
+      try:
+        circle2Pos = self.detect_blue(image)
+        self.cacheBlueCirclePos(circle2Pos)
+      except:
+        circle2Pos = self.blueCircleCache[-1]
+
+      # find the distance between two circles
+      dist = np.sum((circle1Pos - circle2Pos)**2)
+      return 2.5 / np.sqrt(dist)
+
+  # Calculate the conversion from pixel to meter
+  def pixel2meterBlueToGreen(self,image):
+
+      try:
+        circle1Pos = self.detect_blue(image)
+        self.cacheBlueCirclePos(circle1Pos)
+      except:
+        circle1Pos = self.blueCircleCache[-1]
+
+      try:
+        circle2Pos = self.detect_green(image)
+        self.cacheGreenCirclePos(circle2Pos)
+      except:
+        circle2Pos = self.greenCircleCache[-1]        
+
       # find the distance between two circles
       dist = np.sum((circle1Pos - circle2Pos)**2)
       return 3.5 / np.sqrt(dist)
 
   # Calculate the conversion from pixel to meter
-  def pixel2meterEndEff(self,image):
-      # Obtain the centre of each coloured blob
-      circle1Pos = self.detect_green(image)
-      circle2Pos = self.detect_red(image)
+  def pixel2meterGreenToRed(self,image):
+
+      try:
+        circle1Pos = self.detect_green(image)
+        self.cacheGreenCirclePos(circle1Pos)
+      except:
+        circle1Pos = self.greenCircleCache[-1] 
+
+      try:
+        circle2Pos = self.detect_red(image)
+        self.cacheRedCirclePos(circle2Pos)
+      except:
+        circle2Pos = self.redCircleCache[-1]  
+
       # find the distance between two circles
       dist = np.sum((circle1Pos - circle2Pos)**2)
       return 3.0 / np.sqrt(dist)
@@ -297,90 +340,110 @@ class image_converter:
     # Uncomment if you want to save the image
     #cv2.imwrite('image_copy.png', cv_image)
 
-    # get joint positions
-    try:
-      joint2Pos = self.detect_blue(self.cv_image1)
-      self.cacheBlueCirclePos(joint2Pos)
-    except:
-      joint2Pos = self.blueCircleCache[-1]
-    joint3Pos = joint2Pos
-    try:
-      joint4Pos =  self.detect_green(self.cv_image1)
-      self.cacheGreenCirclePos(joint4Pos)
-    except:
-      joint4Pos = self.greenCircleCache[-1]
-    try:
-      endEffectorPos = self.detect_red(self.cv_image1)
-      self.cacheRedCirclePos(endEffectorPos)
-    except:
-      endEffectorPos = self.redCircleCache[-1]
+    if self.section2Flag == 1:
+      # get joint positions
+      try:
+        joint2Pos = self.detect_blue(self.cv_image1)
+        self.cacheBlueCirclePos(joint2Pos)
+      except:
+        joint2Pos = self.blueCircleCache[-1]
+      joint3Pos = joint2Pos
+      joint3Pos = self.pixel2meterBlueToGreen(self.cv_image1) * joint3Pos
+    
+      try:
+        joint4Pos =  self.detect_green(self.cv_image1)
+        self.cacheGreenCirclePos(joint4Pos)
+      except:
+        joint4Pos = self.greenCircleCache[-1]
+      joint4Pos = self.pixel2meterBlueToGreen(self.cv_image1) * joint4Pos
 
-    # get angles
-    theta2 = np.arctan2(joint3Pos[0]- joint4Pos[0], joint3Pos[1] - joint4Pos[1])
-    theta4 = np.arctan2(joint4Pos[0]- endEffectorPos[0], joint4Pos[1] - endEffectorPos[1]) - theta2
+      # get theta2
+      theta2 = np.arctan2(joint3Pos[0]- joint4Pos[0], joint3Pos[1] - joint4Pos[1])
 
-    # Publish the results
-    try: 
-      self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
-    except CvBridgeError as e:
-      print(e)
+      try:
+        joint4Pos =  self.detect_green(self.cv_image1)
+        self.cacheGreenCirclePos(joint4Pos)
+      except:
+        joint4Pos = self.greenCircleCache[-1]
+      joint4Pos = self.pixel2meterGreenToRed(self.cv_image1) * joint4Pos
+    
+      try:
+        endEffectorPos = self.detect_red(self.cv_image1)
+        self.cacheRedCirclePos(endEffectorPos)
+      except:
+        endEffectorPos = self.redCircleCache[-1]
+      endEffectorPos = self.pixel2meterGreenToRed(self.cv_image1) * endEffectorPos
 
-    # comment out sinusoids for section 3.1
-    # adjust joint angles using sinusoidal signals
-    # self.joint2=Float64()
-    # inputAngle2 = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
-    # self.joint2.data = inputAngle2
-    # self.joint3=Float64()
-    # inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
-    # self.joint3.data = inputAngle3    
-    # # get joint angle 3 from topic if being driven from image2.py
-    # # inputAngle3 = self.jointAngle3Data 
+      # get theta4
+      theta4 = np.arctan2(joint4Pos[0]- endEffectorPos[0], joint4Pos[1] - endEffectorPos[1]) - theta2
 
-    # self.joint4=Float64()
-    # inputAngle4 = (np.pi/2) * np.sin((np.pi/20) * rospy.get_time())
-    # self.joint4.data = inputAngle4
+      # Publish the results
+      try: 
+        self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
+      except CvBridgeError as e:
+        print(e)
 
-    # # Publish the results
-    # try:
-    #   self.robot_joint2_pub.publish(self.joint2)
-    #   # self.robot_joint3_pub.publish(self.joint3)
-    #   self.robot_joint4_pub.publish(self.joint4)
-    # except CvBridgeError as e:
-    #   print(e)
+      # comment out sinusoids for section 3.1
+      # adjust joint angles using sinusoidal signals
+      self.joint2=Float64()
+      inputAngle2 = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
+      self.joint2.data = inputAngle2
+      self.joint3=Float64()
+      inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
+      self.joint3.data = inputAngle3    
+      # # get joint angle 3 from topic if being driven from image2.py
+      # # inputAngle3 = self.jointAngle3Data 
+      self.joint4=Float64()
+      inputAngle4 = (np.pi/2) * np.sin((np.pi/20) * rospy.get_time())
+      self.joint4.data = inputAngle4
 
-    # # publish actual and detected joint angles
-    # self.package = Float64()
-    # self.package.data = theta2
-    # self.jointAngle2.publish(self.package)
-    # self.package = Float64()
-    # self.package.data = theta4
-    # self.jointAngle4.publish(self.package)
-    # self.package = Float64()
-    # self.package.data = inputAngle2
-    # self.actualJointAngle2.publish(self.package)    
-    # self.package = Float64()
-    # self.package.data = inputAngle4
-    # self.actualJointAngle4.publish(self.package)      
+      # Publish the results
+      try:
+        self.robot_joint2_pub.publish(self.joint2)
+        self.robot_joint3_pub.publish(self.joint3)
+        self.robot_joint4_pub.publish(self.joint4)
+      except CvBridgeError as e:
+        print(e)
 
-    # print joint angles
-    # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
-    # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
+      # publish actual and detected joint angles
+      self.package = Float64()
+      self.package.data = theta2
+      self.jointAngle2.publish(self.package)
+      self.package = Float64()
+      self.package.data = theta4
+      self.jointAngle4.publish(self.package)
+      self.package = Float64()
+      self.package.data = inputAngle2
+      self.actualJointAngle2.publish(self.package)    
+      self.package = Float64()
+      self.package.data = inputAngle4
+      self.actualJointAngle4.publish(self.package)      
 
-    # get position of circular object
-    try:
-      objectPos = self.get_object_coordinates(self.cv_image1)
-    except:
-      objectPos = self.objectCache[-1]
-    # position of first joint
-    try:
-      joint1Pos = self.detect_yellow(self.cv_image1)
-      self.cacheYellowCirclePos(joint1Pos)
-    except:
-      joint1Pos = self.yellowCircleCache[-1]
+      # print joint angles
+      # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
+      # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
 
-    # caculate object distance and get z/y coordinates in meters:
-    dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
-    # print(z,y)
+      # get position of circular object
+      try:
+        objectPos = self.get_object_coordinates(self.cv_image1)
+      except:
+        objectPos = self.objectCache[-1]
+      # position of first joint
+      try:
+        joint1Pos = self.detect_yellow(self.cv_image1)
+        self.cacheYellowCirclePos(joint1Pos)
+      except:
+        joint1Pos = self.yellowCircleCache[-1]
+      # try:
+      #   joint2Pos = self.detect_blue(self.cv_image1)
+      #   self.cacheBlueCirclePos(joint2Pos)
+      # except:
+      #   joint2Pos = self.blueCircleCache[-1]
+
+      # NOTE: use alternative method to calculate distance using solvePnP
+      # caculate object distance and get z/y coordinates in meters:
+      dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
+      print(z,y)
 
     # publish estimated position of target
     self.package = Float64()
@@ -396,7 +459,7 @@ class image_converter:
       self.transform(0, 0, -3.5, -np.pi/2) @ \
       self.transform(0, 0, -3, 0)
 
-    print(endEffectorPosInBase)
+    # print(endEffectorPosInBase)
 
 
     im2=cv2.imshow('window2', self.cv_image1)
