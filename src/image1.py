@@ -17,9 +17,10 @@ class image_converter:
   # Defines publisher and subscriber
   def __init__(self):
 
-    # define flags to execute specific sections of assignment
-    self.section2Flag = 0
-    self.section3Flag = 1
+    # define flag to determine whether joints should be modulated using sinusoids
+    self.modulateJointsWithSinusoids = 0
+
+    self.meterPerPixel = 0.0
 
     # define a cache to store positions of circles
     self.greenCircleCache = []
@@ -253,51 +254,51 @@ class image_converter:
       # return 0,0 if object cannot be detected
       return self.objectCache[-1]
 
+  # THIS FUNCTION IS NO LONGER USED TO CALCULATE DISTANCE OF TARGET
+  # def get_distance_base_to_object(self, joint1Pos, joint2Pos, objectPos):
+  #   if objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
+  #     # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
+  #     theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
+  #     # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
+  #     theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
+  #     theta3 = np.pi - theta1 - theta2
+  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+  #   elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] > joint2Pos[1]:
+  #     # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
+  #     theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
+  #     # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
+  #     theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
+  #     theta3 = np.pi - theta1 - theta2
+  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+  #   elif objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
+  #     # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
+  #     theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
+  #     # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
+  #     theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
+  #     theta3 = np.pi - theta1 - theta2
+  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+  #   elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
+  #     # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
+  #     theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
+  #     # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
+  #     theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
+  #     theta3 = np.pi - theta1 - theta2
+  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
+  #   else:
+  #     distJoint1ToObject=-1
 
-  def get_distance_base_to_object(self, joint1Pos, joint2Pos, objectPos):
-    if objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
-      # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
-      theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
-      # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
-      theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
-      theta3 = np.pi - theta1 - theta2
-      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-    elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] > joint2Pos[1]:
-      # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
-      theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
-      # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
-      theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
-      theta3 = np.pi - theta1 - theta2
-      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-    elif objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
-      # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
-      theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
-      # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
-      theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
-      theta3 = np.pi - theta1 - theta2
-      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-    elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
-      # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
-      theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
-      # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
-      theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
-      theta3 = np.pi - theta1 - theta2
-      distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-    else:
-      distJoint1ToObject=-1
-
-    # calculate z and y lengths if distance of object is known:
-    if objectPos[0] > joint1Pos[0] and distJoint1ToObject != -1:
-      z = np.sin(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-      y = np.cos(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-    elif objectPos[0] < joint1Pos[0] and distJoint1ToObject != 1:
-      z = np.sin((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-      y = np.cos((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject * -1
-    # return (0,0) if object cannot be located in image
-    else:
-      z = 0.0
-      y = 0.0
-    return distJoint1ToObject, z, y
+  #   # calculate z and y lengths if distance of object is known:
+  #   if objectPos[0] > joint1Pos[0] and distJoint1ToObject != -1:
+  #     z = np.sin(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+  #     y = np.cos(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+  #   elif objectPos[0] < joint1Pos[0] and distJoint1ToObject != 1:
+  #     z = np.sin((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
+  #     y = np.cos((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject * -1
+  #   # return (0,0) if object cannot be located in image
+  #   else:
+  #     z = 0.0
+  #     y = 0.0
+  #   return distJoint1ToObject, z, y
  
 
   # A function to transform from one frame to another using 4 D-H parameters
@@ -346,54 +347,16 @@ class image_converter:
       self.cv_image1 = self.bridge.imgmsg_to_cv2(data, "bgr8")
     except CvBridgeError as e:
       print(e)
+
+    # calculate metes per pixel and store value
+    if self.meterPerPixel == 0.0:
+      self.meterPerPixel = self.pixel2meterYellowToBlue(self.cv_image1)      
     
     # Uncomment if you want to save the image
     #cv2.imwrite('image_copy.png', cv_image)
 
-    if self.section2Flag == 1:
-      # get joint positions
-      try:
-        joint2Pos = self.detect_blue(self.cv_image1)
-        self.cacheBlueCirclePos(joint2Pos)
-      except:
-        joint2Pos = self.blueCircleCache[-1]
-      joint3Pos = joint2Pos
-      joint3Pos = self.pixel2meterBlueToGreen(self.cv_image1) * joint3Pos
-    
-      try:
-        joint4Pos =  self.detect_green(self.cv_image1)
-        self.cacheGreenCirclePos(joint4Pos)
-      except:
-        joint4Pos = self.greenCircleCache[-1]
-      joint4Pos = self.pixel2meterBlueToGreen(self.cv_image1) * joint4Pos
-
-      # get theta2
-      theta2 = np.arctan2(joint3Pos[0]- joint4Pos[0], joint3Pos[1] - joint4Pos[1])
-
-      try:
-        joint4Pos =  self.detect_green(self.cv_image1)
-        self.cacheGreenCirclePos(joint4Pos)
-      except:
-        joint4Pos = self.greenCircleCache[-1]
-      joint4Pos = self.pixel2meterGreenToRed(self.cv_image1) * joint4Pos
-    
-      try:
-        endEffectorPos = self.detect_red(self.cv_image1)
-        self.cacheRedCirclePos(endEffectorPos)
-      except:
-        endEffectorPos = self.redCircleCache[-1]
-      endEffectorPos = self.pixel2meterGreenToRed(self.cv_image1) * endEffectorPos
-
-      # get theta4
-      theta4 = np.arctan2(joint4Pos[0]- endEffectorPos[0], joint4Pos[1] - endEffectorPos[1]) - theta2
-
-      # Publish the results
-      try: 
-        self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
-      except CvBridgeError as e:
-        print(e)
-
-      # comment out sinusoids for section 3.1
+    # SECTION 2.1
+    if self.modulateJointsWithSinusoids == 1:
       # adjust joint angles using sinusoidal signals
       self.joint2=Float64()
       inputAngle2 = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
@@ -406,74 +369,139 @@ class image_converter:
       self.joint4=Float64()
       inputAngle4 = (np.pi/2) * np.sin((np.pi/20) * rospy.get_time())
       self.joint4.data = inputAngle4
+    else:
+      self.joint2=Float64()
+      inputAngle2 = 0.0
+      self.joint2.data = inputAngle2
+      self.joint3=Float64()
+      inputAngle3 = 0.0
+      self.joint3.data = inputAngle3    
+      self.joint4=Float64()
+      inputAngle4 = 0.0
+      self.joint4.data = inputAngle4      
 
-      # Publish the results
-      try:
-        self.robot_joint2_pub.publish(self.joint2)
-        self.robot_joint3_pub.publish(self.joint3)
-        self.robot_joint4_pub.publish(self.joint4)
-      except CvBridgeError as e:
-        print(e)
+    # Publish the results
+    try:
+      self.robot_joint2_pub.publish(self.joint2)
+      self.robot_joint3_pub.publish(self.joint3)
+      self.robot_joint4_pub.publish(self.joint4)
+    except CvBridgeError as e:
+      print(e)
 
-      # publish actual and detected joint angles
-      self.package = Float64()
-      self.package.data = theta2
-      self.jointAngle2.publish(self.package)
-      self.package = Float64()
-      self.package.data = theta4
-      self.jointAngle4.publish(self.package)
-      self.package = Float64()
-      self.package.data = inputAngle2
-      self.actualJointAngle2.publish(self.package)    
-      self.package = Float64()
-      self.package.data = inputAngle4
-      self.actualJointAngle4.publish(self.package)      
+    # get joint positions
+    try:
+      joint2Pos = self.detect_blue(self.cv_image1)
+      self.cacheBlueCirclePos(joint2Pos)
+    except:
+      joint2Pos = self.blueCircleCache[-1]
+    joint3Pos = joint2Pos
+    joint3Pos = self.pixel2meterBlueToGreen(self.cv_image1) * joint3Pos
+    
+    try:
+      joint4Pos =  self.detect_green(self.cv_image1)
+      self.cacheGreenCirclePos(joint4Pos)
+    except:
+      joint4Pos = self.greenCircleCache[-1]
+    joint4Pos = self.pixel2meterBlueToGreen(self.cv_image1) * joint4Pos
 
-      # print joint angles
-      # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
-      # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
+    # get theta2
+    theta2 = np.arctan2(joint3Pos[0]- joint4Pos[0], joint3Pos[1] - joint4Pos[1])
 
-      # get position of circular object
-      try:
-        objectPos = self.get_object_coordinates(self.cv_image1)
-      except:
-        objectPos = self.objectCache[-1]
-      # position of first joint
-      try:
-        joint1Pos = self.detect_yellow(self.cv_image1)
-        self.cacheYellowCirclePos(joint1Pos)
-      except:
-        joint1Pos = self.yellowCircleCache[-1]
-      # try:
-      #   joint2Pos = self.detect_blue(self.cv_image1)
-      #   self.cacheBlueCirclePos(joint2Pos)
-      # except:
-      #   joint2Pos = self.blueCircleCache[-1]
+    try:
+      joint4Pos =  self.detect_green(self.cv_image1)
+      self.cacheGreenCirclePos(joint4Pos)
+    except:
+      joint4Pos = self.greenCircleCache[-1]
+    joint4Pos = self.pixel2meterGreenToRed(self.cv_image1) * joint4Pos
+    
+    try:
+      endEffectorPos = self.detect_red(self.cv_image1)
+      self.cacheRedCirclePos(endEffectorPos)
+    except:
+      endEffectorPos = self.redCircleCache[-1]
+    endEffectorPos = self.pixel2meterGreenToRed(self.cv_image1) * endEffectorPos
 
-      # NOTE: use alternative method to calculate distance using solvePnP
-      # caculate object distance and get z/y coordinates in meters:
-      dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
-      print(z,y)
+    # get theta4
+    theta4 = np.arctan2(joint4Pos[0]- endEffectorPos[0], joint4Pos[1] - endEffectorPos[1]) - theta2
 
-      # publish estimated position of target
-      self.package = Float64()
-      self.package.data = z
-      self.targetZPosEst.publish(self.package)
-      self.package = Float64()
-      self.package.data = y
-      self.targetYPosEst.publish(self.package)
+    # Publish the results
+    try: 
+      self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
+    except CvBridgeError as e:
+      print(e)
 
-    if self.section3Flag == 1:
+    # publish actual and detected joint angles
+    self.package = Float64()
+    self.package.data = theta2
+    self.jointAngle2.publish(self.package)
+    self.package = Float64()
+    self.package.data = theta4
+    self.jointAngle4.publish(self.package)
+    self.package = Float64()
+    self.package.data = inputAngle2
+    self.actualJointAngle2.publish(self.package)    
+    self.package = Float64()
+    self.package.data = inputAngle4
+    self.actualJointAngle4.publish(self.package)      
 
-      theta1, theta2, theta3, theta4 = 0.0, 0.0, 0.0, 0.0
-      d1, d2, d3, d4 = 2.5, 0.0, 0.0, 0.0
-      a1, a2, a3, a4 = 0.0, 0.0, -3.5, -3.0
-      alpha1, alpha2, alpha3, alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
+    # print joint angles
+    # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
+    # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
 
-      endEffectorPosInBase = self.getEndEffectorPosInBaseFrame(
-      theta1, theta2, theta3, theta4, 
-      d1, d2, d3, d4, a1, a2, a3, a4, 
-      alpha1, alpha2, alpha3, alpha4)
+
+
+
+    #SECTION 2.2:
+    # get position of circular object
+    try:
+      objectPos = self.get_object_coordinates(self.cv_image1)
+      self.cacheObjectPos(objectPos)
+    except:
+      objectPos = self.objectCache[-1]
+    # position of first joint
+    try:
+      joint1Pos = self.detect_yellow(self.cv_image1)
+      self.cacheYellowCirclePos(joint1Pos)
+    except:
+      joint1Pos = self.yellowCircleCache[-1]
+    try:
+      joint2Pos = self.detect_blue(self.cv_image1)
+      self.cacheBlueCirclePos(joint2Pos)
+    except:
+      joint2Pos = self.blueCircleCache[-1]
+
+    # THIS METHOD NO LONGER USED
+    # caculate object distance and get z/y coordinates in meters:
+    # dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
+    # print(z,y)
+
+    # calculate distance from base to object
+    distBaseToObjectPixels = np.sum((joint1Pos - objectPos)**2)
+    distBaseToObjectMeters = self.pixel2meterYellowToBlue(self.cv_image1) * np.sqrt(distBaseToObjectPixels)    
+    baseToTargetAngle = np.arctan2(joint1Pos[0]- objectPos[0], joint1Pos[1] - objectPos[1])
+    targetZ = distBaseToObjectMeters*np.cos(baseToTargetAngle)
+    targetY = distBaseToObjectMeters*np.sin(baseToTargetAngle) 
+
+    # publish estimated position of target
+    self.package = Float64()
+    self.package.data = targetZ
+    self.targetZPosEst.publish(self.package)
+    self.package = Float64()
+    self.package.data = targetY
+    self.targetYPosEst.publish(self.package)
+
+
+
+    # SECTION 3.1
+    theta1, theta2, theta3, theta4 = 0.0, 0.0, 0.0, 0.0
+    d1, d2, d3, d4 = 2.5, 0.0, 0.0, 0.0
+    a1, a2, a3, a4 = 0.0, 0.0, -3.5, -3.0
+    alpha1, alpha2, alpha3, alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
+
+    endEffectorPosInBase = self.getEndEffectorPosInBaseFrame(
+    theta1, theta2, theta3, theta4, 
+    d1, d2, d3, d4, a1, a2, a3, a4, 
+    alpha1, alpha2, alpha3, alpha4)
 
 
     im2=cv2.imshow('window2', self.cv_image1)
