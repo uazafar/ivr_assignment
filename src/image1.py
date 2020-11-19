@@ -18,9 +18,9 @@ class image_converter:
   def __init__(self):
 
     # define flag to determine whether joints should be modulated using sinusoids
-    self.modulateJointsWithSinusoids = 0
+    self.modulateJointsWithSinusoids = 1
 
-    self.meterPerPixel = 0.0
+    self.meterPerPixel = None
 
     # define a cache to store positions of circles
     self.greenCircleCache = []
@@ -349,7 +349,7 @@ class image_converter:
       print(e)
 
     # calculate metes per pixel and store value
-    if self.meterPerPixel == 0.0:
+    if not self.meterPerPixel:
       self.meterPerPixel = self.pixel2meterYellowToBlue(self.cv_image1)      
     
     # Uncomment if you want to save the image
@@ -367,7 +367,7 @@ class image_converter:
       # # get joint angle 3 from topic if being driven from image2.py
       # # inputAngle3 = self.jointAngle3Data 
       self.joint4=Float64()
-      inputAngle4 = (np.pi/2) * np.sin((np.pi/20) * rospy.get_time())
+      inputAngle4 = (np.pi/3) * np.sin((np.pi/20) * rospy.get_time())
       self.joint4.data = inputAngle4
     else:
       self.joint2=Float64()
@@ -395,31 +395,22 @@ class image_converter:
     except:
       joint2Pos = self.blueCircleCache[-1]
     joint3Pos = joint2Pos
-    joint3Pos = self.pixel2meterBlueToGreen(self.cv_image1) * joint3Pos
+    joint3Pos = joint3Pos
     
     try:
       joint4Pos =  self.detect_green(self.cv_image1)
       self.cacheGreenCirclePos(joint4Pos)
     except:
       joint4Pos = self.greenCircleCache[-1]
-    joint4Pos = self.pixel2meterBlueToGreen(self.cv_image1) * joint4Pos
 
     # get theta2
     theta2 = np.arctan2(joint3Pos[0]- joint4Pos[0], joint3Pos[1] - joint4Pos[1])
 
     try:
-      joint4Pos =  self.detect_green(self.cv_image1)
-      self.cacheGreenCirclePos(joint4Pos)
-    except:
-      joint4Pos = self.greenCircleCache[-1]
-    joint4Pos = self.pixel2meterGreenToRed(self.cv_image1) * joint4Pos
-    
-    try:
       endEffectorPos = self.detect_red(self.cv_image1)
       self.cacheRedCirclePos(endEffectorPos)
     except:
       endEffectorPos = self.redCircleCache[-1]
-    endEffectorPos = self.pixel2meterGreenToRed(self.cv_image1) * endEffectorPos
 
     # get theta4
     theta4 = np.arctan2(joint4Pos[0]- endEffectorPos[0], joint4Pos[1] - endEffectorPos[1]) - theta2
@@ -445,7 +436,7 @@ class image_converter:
     self.actualJointAngle4.publish(self.package)      
 
     # print joint angles
-    # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
+    print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
     # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
 
 
@@ -477,7 +468,7 @@ class image_converter:
 
     # calculate distance from base to object
     distBaseToObjectPixels = np.sum((joint1Pos - objectPos)**2)
-    distBaseToObjectMeters = self.pixel2meterYellowToBlue(self.cv_image1) * np.sqrt(distBaseToObjectPixels)    
+    distBaseToObjectMeters = self.meterPerPixel * np.sqrt(distBaseToObjectPixels)    
     baseToTargetAngle = np.arctan2(joint1Pos[0]- objectPos[0], joint1Pos[1] - objectPos[1])
     targetZ = distBaseToObjectMeters*np.cos(baseToTargetAngle)
     targetY = distBaseToObjectMeters*np.sin(baseToTargetAngle) 
@@ -503,6 +494,7 @@ class image_converter:
     d1, d2, d3, d4, a1, a2, a3, a4, 
     alpha1, alpha2, alpha3, alpha4)
 
+    # random 
 
     im2=cv2.imshow('window2', self.cv_image1)
     cv2.waitKey(1)

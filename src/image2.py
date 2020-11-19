@@ -17,7 +17,7 @@ class image_converter:
   def __init__(self):
 
     # define flag to determine whether joints should be modulated using sinusoids
-    self.modulateJointsWithSinusoids = 0    
+    self.modulateJointsWithSinusoids = 0   
 
     # define a cache to store positions of circles
     self.greenCircleCache = []
@@ -26,7 +26,7 @@ class image_converter:
     self.yellowCircleCache = []
     self.objectCache = []
 
-    self.meterPerPixel = 0.0
+    self.meterPerPixel = None
 
     # initialize the node named image_processing
     rospy.init_node('image_processing', anonymous=True)
@@ -281,7 +281,7 @@ class image_converter:
     #cv2.imwrite('image_copy.png', cv_image)
 
     # calculate metes per pixel and store value
-    if self.meterPerPixel == 0.0:
+    if not self.meterPerPixel:
       self.meterPerPixel = self.pixel2meterYellowToBlue(self.cv_image2)
 
     # SECTION 2.1
