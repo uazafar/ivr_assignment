@@ -18,8 +18,8 @@ class image_converter:
   def __init__(self):
 
     # define flags to execute specific sections of assignment
-    self.section2Flag = 1
-    self.section3Flag = 0
+    self.section2Flag = 0
+    self.section3Flag = 1
 
     # define a cache to store positions of circles
     self.greenCircleCache = []
@@ -300,6 +300,7 @@ class image_converter:
     return distJoint1ToObject, z, y
  
 
+  # A function to transform from one frame to another using 4 D-H parameters
   def transform(self, theta, d, a, alpha):
     rZ = np.array([
       [np.cos(theta), -np.sin(theta), 0, 0], 
@@ -327,6 +328,15 @@ class image_converter:
 
     return rZ @ dZ @ dA @ rX
    
+
+  def getEndEffectorPosInBaseFrame(self,
+    theta1, theta2, theta3, theta4, 
+    d1, d2, d3, d4, a1, a2, a3, a4, 
+    alpha1, alpha2, alpha3, alpha4):
+    return self.transform(theta1, d1, a1, alpha1) @ \
+      self.transform(theta2 - np.pi/2, d2, a2, alpha2) @ \
+      self.transform(theta3, d3, a3, alpha3) @ \
+      self.transform(theta4, d4, a4, alpha4)
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
@@ -445,21 +455,25 @@ class image_converter:
       dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
       print(z,y)
 
-    # publish estimated position of target
-    self.package = Float64()
-    self.package.data = z
-    self.targetZPosEst.publish(self.package)
-    self.package = Float64()
-    self.package.data = y
-    self.targetYPosEst.publish(self.package)
+      # publish estimated position of target
+      self.package = Float64()
+      self.package.data = z
+      self.targetZPosEst.publish(self.package)
+      self.package = Float64()
+      self.package.data = y
+      self.targetYPosEst.publish(self.package)
 
-    endEffectorPosInBase = self.transform(0, 0, 0, np.pi/2) @ \
-      self.transform(-np.pi/2, 0, -2.5, -np.pi/2) @ \
-      self.transform(0, 0, 0, np.pi/2) @ \
-      self.transform(0, 0, -3.5, -np.pi/2) @ \
-      self.transform(0, 0, -3, 0)
+    if self.section3Flag == 1:
 
-    # print(endEffectorPosInBase)
+      theta1, theta2, theta3, theta4 = 0.0, 0.0, 0.0, 0.0
+      d1, d2, d3, d4 = 2.5, 0.0, 0.0, 0.0
+      a1, a2, a3, a4 = 0.0, 0.0, -3.5, -3.0
+      alpha1, alpha2, alpha3, alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
+
+      endEffectorPosInBase = self.getEndEffectorPosInBaseFrame(
+      theta1, theta2, theta3, theta4, 
+      d1, d2, d3, d4, a1, a2, a3, a4, 
+      alpha1, alpha2, alpha3, alpha4)
 
 
     im2=cv2.imshow('window2', self.cv_image1)
