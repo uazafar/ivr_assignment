@@ -29,6 +29,11 @@ class image_converter:
     self.yellowCircleCache = []
     self.objectCache = []
 
+    # Define D-H variables
+    self.d1, self.d2, self.d3, self.d4 = 2.5, 0.0, 0.0, 0.0
+    self.a1, self.a2, self.a3, self.a4 = 0.0, 0.0, -3.5, -3.0
+    self.alpha1, self.alpha2, self.alpha3, self.alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
+
     # initialize the node named image_processing
     rospy.init_node('image_processing', anonymous=True)
     # initialize a publisher to send images from camera1 to a topic named image_topic1
@@ -60,7 +65,7 @@ class image_converter:
     self.actualJointAngle2 = rospy.Publisher("actualJointAngle2", Float64, queue_size=10)
     self.actualJointAngle4 = rospy.Publisher("actualJointAngle4", Float64, queue_size=10)
     self.targetZPosEst = rospy.Publisher("targetZPosEst", Float64, queue_size=10)
-    self.targetYPosEst = rospy.Publisher("targetYPosEst", Float64, queue_size=10)
+    self.targetXPosEst = rospy.Publisher("targetXPosEst", Float64, queue_size=10)
     self.rate = rospy.Rate(10) #hz
     self.time = rospy.get_time()
 
@@ -254,53 +259,6 @@ class image_converter:
       # return 0,0 if object cannot be detected
       return self.objectCache[-1]
 
-  # THIS FUNCTION IS NO LONGER USED TO CALCULATE DISTANCE OF TARGET
-  # def get_distance_base_to_object(self, joint1Pos, joint2Pos, objectPos):
-  #   if objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
-  #     # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
-  #     theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
-  #     # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
-  #     theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
-  #     theta3 = np.pi - theta1 - theta2
-  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-  #   elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] > joint2Pos[1]:
-  #     # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
-  #     theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
-  #     # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
-  #     theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
-  #     theta3 = np.pi - theta1 - theta2
-  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-  #   elif objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
-  #     # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
-  #     theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
-  #     # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
-  #     theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
-  #     theta3 = np.pi - theta1 - theta2
-  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-  #   elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
-  #     # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
-  #     theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
-  #     # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
-  #     theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
-  #     theta3 = np.pi - theta1 - theta2
-  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-  #   else:
-  #     distJoint1ToObject=-1
-
-  #   # calculate z and y lengths if distance of object is known:
-  #   if objectPos[0] > joint1Pos[0] and distJoint1ToObject != -1:
-  #     z = np.sin(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-  #     y = np.cos(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-  #   elif objectPos[0] < joint1Pos[0] and distJoint1ToObject != 1:
-  #     z = np.sin((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-  #     y = np.cos((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject * -1
-  #   # return (0,0) if object cannot be located in image
-  #   else:
-  #     z = 0.0
-  #     y = 0.0
-  #   return distJoint1ToObject, z, y
- 
-
   # A function to transform from one frame to another using 4 D-H parameters
   def transform(self, theta, d, a, alpha):
     rZ = np.array([
@@ -330,14 +288,25 @@ class image_converter:
     return rZ @ dZ @ dA @ rX
    
 
-  def getEndEffectorPosInBaseFrame(self,
-    theta1, theta2, theta3, theta4, 
-    d1, d2, d3, d4, a1, a2, a3, a4, 
-    alpha1, alpha2, alpha3, alpha4):
-    return self.transform(theta1, d1, a1, alpha1) @ \
-      self.transform(theta2 - np.pi/2, d2, a2, alpha2) @ \
-      self.transform(theta3, d3, a3, alpha3) @ \
-      self.transform(theta4, d4, a4, alpha4)
+
+  def getEndEffectorXYZ(self, theta1, theta2, theta3, theta4):
+    # end effector matrix
+    endEffectorPosInBaseMatrix = self.getEndEffectorToBaseFrameMatrix(
+    theta1, theta2, theta3, theta4)
+
+    endEffectorPos = np.array([
+      round(endEffectorPosInBaseMatrix[0:3][0][3], 3) , 
+      round(endEffectorPosInBaseMatrix[0:3][1][3], 3) , 
+      round(endEffectorPosInBaseMatrix[0:3][2][3], 3)]) 
+
+    return endEffectorPos   
+
+  def getEndEffectorToBaseFrameMatrix(self,
+    theta1, theta2, theta3, theta4):
+    return self.transform(theta1, self.d1, self.a1, self.alpha1) @ \
+      self.transform(theta2 - np.pi/2, self.d2, self.a2, self.alpha2) @ \
+      self.transform(theta3, self.d3, self.a3, self.alpha3) @ \
+      self.transform(theta4, self.d4, self.a4, self.alpha4)
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
@@ -436,7 +405,7 @@ class image_converter:
     self.actualJointAngle4.publish(self.package)      
 
     # print joint angles
-    print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
+    # print("Joint Angle 2 Input: {}, Detected Angle: {}".format(inputAngle2, theta2))
     # print("Joint Angle 4 Input: {}, Detected Angle: {}".format(inputAngle4, theta4))
 
 
@@ -461,38 +430,36 @@ class image_converter:
     except:
       joint2Pos = self.blueCircleCache[-1]
 
-    # THIS METHOD NO LONGER USED
-    # caculate object distance and get z/y coordinates in meters:
-    # dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
-    # print(z,y)
 
     # calculate distance from base to object
+    # x, y, z of target is based on base frame as defined through D-H
     distBaseToObjectPixels = np.sum((joint1Pos - objectPos)**2)
     distBaseToObjectMeters = self.meterPerPixel * np.sqrt(distBaseToObjectPixels)    
     baseToTargetAngle = np.arctan2(joint1Pos[0]- objectPos[0], joint1Pos[1] - objectPos[1])
     targetZ = distBaseToObjectMeters*np.cos(baseToTargetAngle)
-    targetY = distBaseToObjectMeters*np.sin(baseToTargetAngle) 
+    targetX = distBaseToObjectMeters*np.sin(baseToTargetAngle)*-1
 
     # publish estimated position of target
     self.package = Float64()
     self.package.data = targetZ
     self.targetZPosEst.publish(self.package)
     self.package = Float64()
-    self.package.data = targetY
-    self.targetYPosEst.publish(self.package)
+    self.package.data = targetX
+    self.targetXPosEst.publish(self.package)
 
 
 
     # SECTION 3.1
-    theta1, theta2, theta3, theta4 = 0.0, 0.0, 0.0, 0.0
-    d1, d2, d3, d4 = 2.5, 0.0, 0.0, 0.0
-    a1, a2, a3, a4 = 0.0, 0.0, -3.5, -3.0
-    alpha1, alpha2, alpha3, alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
 
-    endEffectorPosInBase = self.getEndEffectorPosInBaseFrame(
-    theta1, theta2, theta3, theta4, 
-    d1, d2, d3, d4, a1, a2, a3, a4, 
-    alpha1, alpha2, alpha3, alpha4)
+    # ensure robot position is correct when all angles zero
+    endEffectorStraight = self.getEndEffectorXYZ(0,0,0,0)
+    assert endEffectorStraight[0] < 1.0e-10
+    assert endEffectorStraight[1] < 1.0e-10
+    assert endEffectorStraight[2] == 9.0
+
+    print(rospy.get_time())
+
+
 
     # random 
 

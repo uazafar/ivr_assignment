@@ -46,7 +46,7 @@ class image_converter:
     # set up publisher   
     # rospy.init_node('publisher_node',anonymous=True)
     self.jointAngle3 = rospy.Publisher("jointAngle3", Float64, queue_size=10)
-    self.targetXPosEst = rospy.Publisher("targetXPosEst", Float64, queue_size=10)
+    self.targetYPosEst = rospy.Publisher("targetYPosEst", Float64, queue_size=10)
     self.actualJointAngle3 = rospy.Publisher("actualJointAngle3", Float64, queue_size=10)
     self.rate = rospy.Rate(10) #hz
     self.time = rospy.get_time()
@@ -224,50 +224,6 @@ class image_converter:
       # return last known position of object
       return self.objectCache[-1]
 
-  # THIS FUNCTION IS NO LONGER USED TO CALCULATE DISTANCE OF TARGET
-  # def get_distance_base_to_object(self, joint1Pos, joint2Pos, objectPos):
-  #   if objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
-  #     # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
-  #     theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
-  #     # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
-  #     theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
-  #     theta3 = np.pi - theta1 - theta2
-  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-  #   elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] > joint2Pos[1]:
-  #     # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
-  #     theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
-  #     # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
-  #     theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
-  #     theta3 = np.pi - theta1 - theta2
-  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-  #   elif objectPos[0] > joint2Pos[0] and objectPos[0] > joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
-  #     # theta1 = np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1])
-  #     theta1 = np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1])
-  #     # theta2 = 1 - np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1])
-  #     theta2 = np.pi - np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1])
-  #     theta3 = np.pi - theta1 - theta2
-  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-  #   elif objectPos[0] < joint2Pos[0] and objectPos[0] < joint1Pos[0] and objectPos[1] < joint1Pos[1] and objectPos[1] < joint2Pos[1]:
-  #     # theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], objectPos[1] - joint1Pos[1]))
-  #     theta1 = np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))
-  #     # theta2 = 1 - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], objectPos[1] - joint2Pos[1]))
-  #     theta2 = np.pi - np.abs(np.arctan2(objectPos[0] - joint2Pos[0], joint2Pos[1] - objectPos[1]))
-  #     theta3 = np.pi - theta1 - theta2
-  #     distJoint1ToObject = (2.5 * np.sin(theta2))/np.sin(theta3)
-  #   else:
-  #     distJoint1ToObject=-1
-
-  #   # calculate z and x lengths if distance of object is known:
-  #   if objectPos[0] > joint1Pos[0] and distJoint1ToObject != -1:
-  #     z = np.sin(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-  #     x = np.cos(((np.pi/2) - np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-  #   elif objectPos[0] < joint1Pos[0] and distJoint1ToObject != 1:
-  #     z = np.sin((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject
-  #     x = np.cos((np.pi/2) - np.abs(np.arctan2(objectPos[0] - joint1Pos[0], joint1Pos[1] - objectPos[1]))) * distJoint1ToObject * -1
-  #   else:
-  #     z = 0.0
-  #     x = 0.0
-  #   return distJoint1ToObject, z, x
 
   # Recieve data, process it, and publish
   def callback2(self,data):
@@ -348,22 +304,19 @@ class image_converter:
     except:
       joint2Pos = self.blueCircleCache[-1]
 
-    # THIS METHOD NO LONGER USED
-    # caculate object distance and get z/y coordinates in meters:
-    # dist, z, y = self.get_distance_base_to_object(joint1Pos, joint2Pos, objectPos)
-    # print(z,y)
-
     # calculate distance from base to object
     distBaseToObjectPixels = np.sum((joint1Pos - objectPos)**2)
     distBaseToObjectMeters = self.meterPerPixel * np.sqrt(distBaseToObjectPixels)    
     baseToTargetAngle = np.arctan2(joint1Pos[0]- objectPos[0], joint1Pos[1] - objectPos[1])
     targetZ = distBaseToObjectMeters*np.cos(baseToTargetAngle)
-    targetX = distBaseToObjectMeters*np.sin(baseToTargetAngle) 
+    targetY = distBaseToObjectMeters*np.sin(baseToTargetAngle) 
+
+    print(targetY)
 
     # publish estimated position of target
     self.package = Float64()
-    self.package.data = targetX
-    self.targetXPosEst.publish(self.package)
+    self.package.data = targetY
+    self.targetYPosEst.publish(self.package)
 
     # publish actual and detected joint angles
     self.package = Float64()
