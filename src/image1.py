@@ -288,6 +288,19 @@ class image_converter:
     return rZ @ dZ @ dA @ rX
    
 
+  def getJacobian(self, theta1, theta2, theta3, theta4):
+    # this expression is common in many derivatives
+    commonExpression = 3.5 + 3*np.cos(theta4)
+
+    dxd1 = np.cos(theta1)*np.sin(theta3)*(commonExpression) + np.sin(theta1)*np.sin(theta2)*np.cos(theta3)*(commonExpression) + 3*np.sin(theta1)*np.cos(theta2)*np.sin(theta4)
+
+    dxd2 = 3*np.sin(theta2)*np.cos(theta1)*np.sin(theta4) - np.cos(theta1)*np.cos(theta2)*np.cos(theta3)*(commonExpression)
+
+    dxd3 = np.cos(theta3)*np.sin(theta1)*(commonExpression) + np.sin(theta3)*np.cos(theta1)*np.sin(theta2)(commonExpression)
+
+    dxd4 = -3*np.cos(theta4)*np.cos(theta1)*np.cos(theta2) + 3*np.sin(theta4)*np.cos(theta1)*np.sin(theta2)*np.cos(theta3) - 3*np.sin(theta4)*np.sin(theta1)*np.sin(theta3)
+    
+
 
   def getEndEffectorXYZ(self, theta1, theta2, theta3, theta4):
     # end effector matrix
