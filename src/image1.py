@@ -521,9 +521,9 @@ class image_converter:
     # closed loop control:
 
     # P gain
-    K_p = np.array([[50,0,0],[0,50,0], [0,0,50]])
+    K_p = np.array([[15,0,0],[0,15,0], [0,0,15]])
     # D gain
-    K_d = np.array([[0.001,0,0],[0,0.001,0], [0,0,0.001]])
+    K_d = np.array([[0.01,0,0],[0,0.01,0], [0,0,0.01]])
 
     cur_time = np.array([rospy.get_time()])
     dt = cur_time - self.time_previous_step
@@ -544,7 +544,7 @@ class image_converter:
     q_d = q + (dt * dq_d)
     # keep joint 1 fixed
     q_d[0] = 0.0
-    self.publishJointAngles(theta1, theta2, theta3, theta4)
+    self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
 
 
 
