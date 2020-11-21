@@ -47,7 +47,7 @@ class image_converter:
     # rospy.init_node('publisher_node',anonymous=True)
     self.jointAngle3 = rospy.Publisher("jointAngle3", Float64, queue_size=10)
     self.targetYPosEst = rospy.Publisher("targetYPosEst", Float64, queue_size=10)
-    self.actualJointAngle3 = rospy.Publisher("actualJointAngle3", Float64, queue_size=10)
+    # self.actualJointAngle3 = rospy.Publisher("actualJointAngle3", Float64, queue_size=10)
     self.rate = rospy.Rate(10) #hz
     self.time = rospy.get_time()
 
@@ -224,82 +224,38 @@ class image_converter:
       # return last known position of object
       return self.objectCache[-1]
 
-
-  # Recieve data, process it, and publish
-  def callback2(self,data):
-    # Recieve the image
-    try:
-      self.cv_image2 = self.bridge.imgmsg_to_cv2(data, "bgr8")
-    except CvBridgeError as e:
-      print(e)
-
-    # Uncomment if you want to save the image
-    #cv2.imwrite('image_copy.png', cv_image)
-
-    # calculate metes per pixel and store value
-    if not self.meterPerPixel:
-      self.meterPerPixel = self.pixel2meterYellowToBlue(self.cv_image2)
-
-    # SECTION 2.1
-    if self.modulateJointsWithSinusoids == 1:
-      # adjust joint angle using sinusoidal signal
-      self.joint3=Float64()
-      inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
-      self.joint3.data = inputAngle3
-    else:
-      self.joint3=Float64()
-      inputAngle3 = 0.0  
-      self.joint3.data = inputAngle3
-
-    # Publish the results
-    try:
-      self.robot_joint3_pub.publish(self.joint3)
-    except CvBridgeError as e:
-      print(e)    
-
-
+  def getTheta3(self, image):
     # get joint positions
     try:
-      joint2Pos = self.detect_blue(self.cv_image2)
+      joint2Pos = self.detect_blue(image)
       self.cacheBlueCirclePos(joint2Pos)
     except:
       joint2Pos = self.blueCircleCache[-1]
-    joint2Pos = self.pixel2meterBlueToGreen(self.cv_image2) * joint2Pos
     try:
-      joint4Pos =  self.detect_green(self.cv_image2)
+      joint4Pos =  self.detect_green(image)
       self.cacheGreenCirclePos(joint4Pos)
     except:
       joint4Pos = self.greenCircleCache[-1]
-    joint4Pos = self.pixel2meterBlueToGreen(self.cv_image2) * joint4Pos
 
     # get angle
-    theta3 = np.arctan2(joint2Pos[0]- joint4Pos[0], joint2Pos[1] - joint4Pos[1])*-1
- 
-    # Publish the results
-    try: 
-      self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
-    except CvBridgeError as e:
-      print(e)
+    theta3 = np.arctan2(joint2Pos[0]- joint4Pos[0], joint2Pos[1] - joint4Pos[1])*-1  
+    
+    return theta3  
 
-    # print joint angles
-    # print("Joint Angle 3 Input: {}, Detected Angle: {}".format(inputAngle3, theta3))
-
-
-    #SECTION 2.2:
-    # get position of circular object
+  def getObjectCoordinates(self, image):
     try:
-      objectPos = self.get_object_coordinates(self.cv_image2)
+      objectPos = self.get_object_coordinates(image)
       self.cacheObjectPos(objectPos)
     except:
       objectPos = self.objectCache[-1]
     # position of first joint
     try:
-      joint1Pos = self.detect_yellow(self.cv_image2)
+      joint1Pos = self.detect_yellow(image)
       self.cacheYellowCirclePos(joint1Pos)
     except:
       joint1Pos = self.yellowCircleCache[-1]
     try:
-      joint2Pos = self.detect_blue(self.cv_image2)
+      joint2Pos = self.detect_blue(image)
       self.cacheBlueCirclePos(joint2Pos)
     except:
       joint2Pos = self.blueCircleCache[-1]
@@ -309,25 +265,54 @@ class image_converter:
     distBaseToObjectMeters = self.meterPerPixel * np.sqrt(distBaseToObjectPixels)    
     baseToTargetAngle = np.arctan2(joint1Pos[0]- objectPos[0], joint1Pos[1] - objectPos[1])
     targetZ = distBaseToObjectMeters*np.cos(baseToTargetAngle)
-    targetY = distBaseToObjectMeters*np.sin(baseToTargetAngle) 
+    targetY = distBaseToObjectMeters*np.sin(baseToTargetAngle)    
+    
+    return targetY, targetZ   
 
-    print(targetY)
+
+  # Recieve data, process it, and publish
+  def callback2(self,data):
+    # Recieve the image
+    try:
+      self.cv_image2 = self.bridge.imgmsg_to_cv2(data, "bgr8")
+    except CvBridgeError as e:
+      print(e)
+
+    # Publish the results
+    try: 
+      self.image_pub2.publish(self.bridge.cv2_to_imgmsg(self.cv_image2, "bgr8"))
+    except CvBridgeError as e:
+      print(e)
+
+    # Uncomment if you want to save the image
+    #cv2.imwrite('image_copy.png', cv_image)
+
+
+    # calculate metes per pixel and store value
+    if not self.meterPerPixel:
+      self.meterPerPixel = self.pixel2meterYellowToBlue(self.cv_image2)
+
+    # SECTION 2.1
+    theta3 = self.getTheta3(self.cv_image2)
+ 
+
+    #SECTION 2.2:
+    # get position of circular object
+    targetY, _ = self.getObjectCoordinates(self.cv_image2)
+
 
     # publish estimated position of target
     self.package = Float64()
     self.package.data = targetY
     self.targetYPosEst.publish(self.package)
 
-    # publish actual and detected joint angles
+    # publish detected joint angles
     self.package = Float64()
     self.package.data = theta3
-    self.jointAngle3.publish(self.package)
-    self.package = Float64()
-    self.package.data = inputAngle3
-    self.actualJointAngle3.publish(self.package)   
+    self.jointAngle3.publish(self.package)  
 
-    im2=cv2.imshow('window2', self.cv_image2)
-    cv2.waitKey(1)
+    # im2=cv2.imshow('window2', self.cv_image2)
+    # cv2.waitKey(1)
 
 
 # call the class
