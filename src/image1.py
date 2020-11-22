@@ -20,6 +20,7 @@ class image_converter:
     # define flag to determine whether joints should be modulated using sinusoids
     self.modulateJointsWithSinusoids = 0
     self.controlRobotWithClosedLoopControl = 0
+    self.controlRobotWithSecondaryTask = 1
 
     self.meterPerPixel = None
 
@@ -44,6 +45,8 @@ class image_converter:
     self.prev_theta2 = 0.0
     self.prev_theta3 = 0.0
     self.prev_theta4 = 0.0
+
+    self.t1, self.t2, self.t3, self.t4 = 0.0, 0.0, 0.0, 0.0
 
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
@@ -500,6 +503,7 @@ class image_converter:
     return orangeSquareX, orangeSquareZ  
 
   def publishJointAngles(self, theta1, theta2, theta3, theta4):
+
     # adjust joint angles
     self.joint1=Float64()
     self.joint1.data = theta1
@@ -512,6 +516,8 @@ class image_converter:
 
     # Publish the results
     try:
+      rate = rospy.Rate(50)
+      rate.sleep()
       self.robot_joint1_pub.publish(self.joint1)
       self.robot_joint2_pub.publish(self.joint2)
       self.robot_joint3_pub.publish(self.joint3)
@@ -624,6 +630,11 @@ class image_converter:
     
     self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
 
+    self.theta1 = q_d[0]
+    self.theta2 = q_d[1]
+    self.theta3 = q_d[2]
+    self.theta4 = q_d[3]
+
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
@@ -697,12 +708,14 @@ class image_converter:
     # robot position when all angles zero
     # endEffectorStraight = self.getEndEffectorXYZ(0,0,0,0)
 
+
+
+
     # SECTION 3.2
 
     # keep first joint angle zero
     theta1 = self.theta1
     theta3 = float(self.jointAngle3Data)
-
 
     # target position:
     targetY = self.targetYPosData
@@ -728,17 +741,18 @@ class image_converter:
     if not self.prev_distance:
       self.prev_distance = self.getEndEffectorToSquareDistance(theta1, theta2, theta3, theta4, orangeSquareX, orangeSquareY, orangeSquareZ)
 
-    self.controlWithSecondaryTask(
-        theta1, 
-        theta2, 
-        theta3, 
-        theta4,
-        targetX, 
-        targetY, 
-        targetZ,
-        orangeSquareX, 
-        orangeSquareY, 
-        orangeSquareZ)
+    if self.controlRobotWithSecondaryTask == 1:
+      self.controlWithSecondaryTask(
+          theta1,
+          theta2, 
+          theta3, 
+          theta4,
+          targetX, 
+          targetY, 
+          targetZ,
+          orangeSquareX, 
+          orangeSquareY, 
+          orangeSquareZ)
 
     # im2=cv2.imshow('window2', self.cv_image1)
     # cv2.waitKey(1)
