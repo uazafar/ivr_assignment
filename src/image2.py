@@ -26,6 +26,7 @@ class image_converter:
     self.yellowCircleCache = []
     # if object not visible straight away, initialise with the following position (behind robot)
     self.objectCache = [[400,400]]
+    self.orangeSquareCache = [[500,354]]
 
     self.meterPerPixel = None
 
@@ -48,8 +49,9 @@ class image_converter:
     # rospy.init_node('publisher_node',anonymous=True)
     self.jointAngle3 = rospy.Publisher("jointAngle3", Float64, queue_size=10)
     self.targetYPosEst = rospy.Publisher("targetYPosEst", Float64, queue_size=10)
+    self.orangeYPosEst = rospy.Publisher("orangeYPosEst", Float64, queue_size=10)
     # self.actualJointAngle3 = rospy.Publisher("actualJointAngle3", Float64, queue_size=10)
-    self.rate = rospy.Rate(10) #hz
+    # self.rate = rospy.Rate(10) #hz
     self.time = rospy.get_time()
 
 
@@ -88,6 +90,12 @@ class image_converter:
       self.objectCache = []
       self.objectCache.append(pos)
 
+  def cacheOrangeSquarePos(self, pos):
+    if len(self.orangeSquareCache) < 1000:
+      self.orangeSquareCache.append(pos)
+    else:
+      self.orangeSquareCache = []
+      self.orangeSquareCache.append(pos)
 
   # In this method you can focus on detecting the centre of the red circle
   def detect_red(self,image):
@@ -243,6 +251,76 @@ class image_converter:
     
     return theta3  
 
+
+
+  def get_orange_square_coordinates(self, image):
+    # Threshold the HSV image to get only orange colors (of object)
+    mask = cv2.inRange(image, (0,20,100), (40,100,150))
+    res = cv2.bitwise_and(image, image, mask= mask)
+
+    # convert image to greyscale
+    gray = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
+    gray = cv2.medianBlur(gray, 5)
+
+    # create parameters for blob detector to detect circles
+    params = cv2.SimpleBlobDetector_Params()
+    params.filterByArea = True
+    params.maxArea = 350
+    params.filterByInertia = 1.0
+    params.filterByConvexity = False
+    params.filterByCircularity = 1.0
+    params.minCircularity = 0.00
+    params.maxCircularity = 0.87
+
+    detector = cv2.SimpleBlobDetector_create(params)
+
+    # convert black pixels to white and object to black
+    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY)
+    res[thresh == 0] = 255
+    res = cv2.bitwise_not(thresh)
+
+    # detect orange square
+    keypoints = detector.detect(res)
+
+    # if x < 420.5, out of range of square and circle detected. Then return previous correct square position
+    if keypoints:
+      idx = 0
+      if len(keypoints) == 2:
+        if  keypoints[0].pt[0] < 420.0:
+          idx = 1
+      elif len(keypoints) == 1:
+        if keypoints[0].pt[0] < 420.0:
+          return self.orangeSquareCache[-1]
+      self.cacheOrangeSquarePos(keypoints[idx].pt)
+      return keypoints[idx].pt
+    else:
+      return self.orangeSquareCache[-1]   
+
+
+  def getOrangeSquareCoordinates(self, image):
+    try:
+      orangeSquare = self.get_orange_square_coordinates(image)
+      self.cacheOrangeSquarePos(orangeSquare)
+    except:
+      orangeSquare = self.objectCache[-1]
+    # position of first joint
+    try:
+      joint1Pos = self.detect_yellow(image)
+      self.cacheYellowCirclePos(joint1Pos)
+    except:
+      joint1Pos = self.yellowCircleCache[-1]
+
+
+    # calculate distance from base to object
+    distBaseToObjectPixels = np.sum((joint1Pos - orangeSquare)**2)
+    distBaseToObjectMeters = self.meterPerPixel * np.sqrt(distBaseToObjectPixels)    
+    baseToTargetAngle = np.arctan2(joint1Pos[0]- orangeSquare[0], joint1Pos[1] - orangeSquare[1])
+    orangeSquareZ = distBaseToObjectMeters*np.cos(baseToTargetAngle)
+    orangeSquareY = distBaseToObjectMeters*np.sin(baseToTargetAngle)    
+    
+    return orangeSquareY, orangeSquareZ   
+
+
   def getObjectCoordinates(self, image):
     try:
       objectPos = self.get_object_coordinates(image)
@@ -255,11 +333,7 @@ class image_converter:
       self.cacheYellowCirclePos(joint1Pos)
     except:
       joint1Pos = self.yellowCircleCache[-1]
-    try:
-      joint2Pos = self.detect_blue(image)
-      self.cacheBlueCirclePos(joint2Pos)
-    except:
-      joint2Pos = self.blueCircleCache[-1]
+
 
     # calculate distance from base to object
     distBaseToObjectPixels = np.sum((joint1Pos - objectPos)**2)
@@ -301,6 +375,12 @@ class image_converter:
     # get position of circular object
     targetY, _ = self.getObjectCoordinates(self.cv_image2)
 
+    orangeSquareY, _ = self.getOrangeSquareCoordinates(self.cv_image2)
+
+    # publish estimated position of orange square
+    self.package = Float64()
+    self.package.data = orangeSquareY
+    self.orangeYPosEst.publish(self.package)
 
     # publish estimated position of target
     self.package = Float64()

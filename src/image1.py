@@ -19,7 +19,7 @@ class image_converter:
 
     # define flag to determine whether joints should be modulated using sinusoids
     self.modulateJointsWithSinusoids = 0
-    self.controlRobotWithClosedLoopControl = 1
+    self.controlRobotWithClosedLoopControl = 0
 
     self.meterPerPixel = None
 
@@ -30,17 +30,20 @@ class image_converter:
     self.yellowCircleCache = []
     # if object not visible straight away, initialise with the following position (behind robot)
     self.objectCache = [[400,400]]
+    self.orangeSquareCache = [[500,354]]
 
     # Define D-H variables
     self.d1, self.d2, self.d3, self.d4 = 2.5, 0.0, 0.0, 0.0
     self.a1, self.a2, self.a3, self.a4 = 0.0, 0.0, -3.5, -3.0
     self.alpha1, self.alpha2, self.alpha3, self.alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
 
+    self.theta1 = 0.0
 
-    self.t1 = 0.0
-    self.t2 = 0.0
-    self.t3 = 0.0
-    self.t4 = 0.0
+    # store previous angles
+    self.prev_theta1 = 0.0
+    self.prev_theta2 = 0.0
+    self.prev_theta3 = 0.0
+    self.prev_theta4 = 0.0
 
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
@@ -59,6 +62,9 @@ class image_converter:
     self.targetYPos = rospy.Subscriber("/targetYPosEst", Float64, self.getTargetYPos)
     self.targetYPosData = Float64() 
 
+    self.orangeYPos = rospy.Subscriber("/orangeYPosEst", Float64, self.getOrangeYPos)
+    self.orangeYPosData = Float64() 
+
     # initialize a publisher to send joints' angular position to the robot
     self.robot_joint1_pub = rospy.Publisher("/robot/joint1_position_controller/command", Float64, queue_size=10)
     self.robot_joint2_pub = rospy.Publisher("/robot/joint2_position_controller/command", Float64, queue_size=10)
@@ -68,7 +74,14 @@ class image_converter:
     self.time_previous_step = np.array([rospy.get_time()], dtype='float64') 
     # initialize error and derivative of error for trajectory tracking  
     self.error = np.array([0.0,0.0, 0.0], dtype='float64')  
-    self.error_d = np.array([0.0,0.0, 0.0], dtype='float64')     
+    self.error_d = np.array([0.0,0.0, 0.0], dtype='float64')   
+
+    # initialise error for secondary task control task
+    self.secondary_error = np.array([0.0,0.0, 0.0], dtype='float64')  
+    self.secondary_error_d = np.array([0.0,0.0, 0.0], dtype='float64')
+
+    # initial distance between end effector and orange square
+    self.prev_distance = None
 
     # set up publisher   
     # rospy.init_node('publisher_node',anonymous=True)
@@ -79,7 +92,7 @@ class image_converter:
     self.actualJointAngle4 = rospy.Publisher("actualJointAngle4", Float64, queue_size=10)
     self.targetZPosEst = rospy.Publisher("targetZPosEst", Float64, queue_size=10)
     self.targetXPosEst = rospy.Publisher("targetXPosEst", Float64, queue_size=10)
-    self.rate = rospy.Rate(10) #hz
+    self.rate = rospy.Rate(1) #hz
     self.time = rospy.get_time()
 
 
@@ -118,6 +131,13 @@ class image_converter:
       self.objectCache = []
       self.objectCache.append(pos)
 
+  def cacheOrangeSquarePos(self, pos):
+    if len(self.orangeSquareCache) < 1000:
+      self.orangeSquareCache.append(pos)
+    else:
+      self.orangeSquareCache = []
+      self.orangeSquareCache.append(pos)
+
   def getJointAngle3(self, data):
     try:
       self.jointAngle3Data = data.data
@@ -130,11 +150,12 @@ class image_converter:
     except CvBridgeError as e:
       print(e)      
 
-  # def getRobotJointState(self, data):
-  #   try:
-  #     self.robotJointStatesData = data
-  #   except CvBridgeError as e:
-  #     print(e)
+  def getOrangeYPos(self, data):
+    try:
+      self.orangeYPosData = data.data
+    except CvBridgeError as e:
+      print(e) 
+
 
   # In this method you can focus on detecting the centre of the red circle
   def detect_red(self,image):
@@ -281,8 +302,49 @@ class image_converter:
       self.cacheObjectPos(keypoints[0].pt)
       return keypoints[0].pt
     else:
-      # return 0,0 if object cannot be detected
       return self.objectCache[-1]
+
+  def get_orange_square_coordinates(self, image):
+    # Threshold the HSV image to get only orange colors (of object)
+    mask = cv2.inRange(image, (0,20,100), (40,100,150))
+    res = cv2.bitwise_and(image, image, mask= mask)
+
+    # convert image to greyscale
+    gray = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
+    gray = cv2.medianBlur(gray, 5)
+
+    # create parameters for blob detector to detect circles
+    params = cv2.SimpleBlobDetector_Params()
+    params.filterByArea = False
+    params.filterByInertia = 1.0
+    params.filterByConvexity = False
+    params.filterByCircularity = 1.0
+    params.minCircularity = 0.00
+    params.maxCircularity = 0.82
+
+    detector = cv2.SimpleBlobDetector_create(params)
+
+    # convert black pixels to white and object to black
+    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY)
+    res[thresh == 0] = 255
+    res = cv2.bitwise_not(thresh)
+
+    # detect orange square
+    keypoints = detector.detect(res)
+
+    # if x < 420.5, out of range of square and circle detected. Then return previous correct square position
+    if keypoints:
+      idx = 0
+      if len(keypoints) == 2:
+        if  keypoints[0].pt[0] < 420.0:
+          idx = 1
+      elif len(keypoints) == 1:
+        if keypoints[0].pt[0] < 420.0:
+          return self.orangeSquareCache[-1]
+      self.cacheOrangeSquarePos(keypoints[idx].pt)
+      return keypoints[idx].pt
+    else:
+      return self.orangeSquareCache[-1]      
 
   # A function to transform from one frame to another using 4 D-H parameters
   def transform(self, theta, d, a, alpha):
@@ -402,12 +464,6 @@ class image_converter:
       self.cacheYellowCirclePos(joint1Pos)
     except:
       joint1Pos = self.yellowCircleCache[-1]
-    try:
-      joint2Pos = self.detect_blue(image)
-      self.cacheBlueCirclePos(joint2Pos)
-    except:
-      joint2Pos = self.blueCircleCache[-1]
-
 
     # calculate distance from base to object
     # x, y, z of target is based on base frame as defined through D-H
@@ -419,8 +475,32 @@ class image_converter:
 
     return targetX, targetZ 
 
+  def getOrangeSquareCoordinates(self, image):  
+    # get position of circular object
+    try:
+      orangeSquarePos = self.get_orange_square_coordinates(image)
+      self.cacheObjectPos(orangeSquarePos)
+    except:
+      orangeSquarePos = self.objectCache[-1]
+    # position of first joint
+    try:
+      joint1Pos = self.detect_yellow(image)
+      self.cacheYellowCirclePos(joint1Pos)
+    except:
+      joint1Pos = self.yellowCircleCache[-1]
+
+    # calculate distance from base to object
+    # x, y, z of target is based on base frame as defined through D-H
+    distBaseToObjectPixels = np.sum((joint1Pos - orangeSquarePos)**2)
+    distBaseToObjectMeters = self.meterPerPixel * np.sqrt(distBaseToObjectPixels)    
+    baseToTargetAngle = np.arctan2(joint1Pos[0]- orangeSquarePos[0], joint1Pos[1] - orangeSquarePos[1])
+    orangeSquareZ = distBaseToObjectMeters*np.cos(baseToTargetAngle)
+    orangeSquareX = distBaseToObjectMeters*np.sin(baseToTargetAngle)*-1   
+
+    return orangeSquareX, orangeSquareZ  
+
   def publishJointAngles(self, theta1, theta2, theta3, theta4):
-    # adjust joint angles using sinusoidal signals
+    # adjust joint angles
     self.joint1=Float64()
     self.joint1.data = theta1
     self.joint2=Float64()
@@ -448,9 +528,9 @@ class image_converter:
     targetY, 
     targetZ):
     # P gain
-    K_p = np.array([[15,0,0],[0,15,0], [0,0,15]])
+    K_p = np.array([[10, 0, 0],[0, 10, 0], [0, 0, 10]])
     # D gain
-    K_d = np.array([[0.01,0,0],[0,0.01,0], [0,0,0.01]])
+    K_d = np.array([[0.1, 0.0, 0.0],[0.0, 0.1, 0.0], [0.0, 0.0, 0.1]])
 
     # get current time step and calculate dt
     cur_time = np.array([rospy.get_time()])
@@ -473,9 +553,79 @@ class image_converter:
     q = np.array([theta1, theta2, theta3, theta4])
     dq_d =np.dot(J_inv, ( np.dot(K_d,self.error_d.transpose()) + np.dot(K_p,self.error.transpose()) ) )
     q_d = q + (dt * dq_d)
-    # keep joint 1 fixed
-    # q_d[0] = 0.0
+
     self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
+
+  def getEndEffectorToSquareDistance(self, theta1, theta2, theta3, theta4, orangeX, orangeY, orangeZ):
+    endEffectorPos = self.getEndEffectorXYZ(theta1, theta2, theta3, theta4)
+    squarePos = np.array([orangeX, orangeY, orangeZ])
+    distance = np.sqrt(np.sum((endEffectorPos-squarePos)**2))
+    return distance
+
+  def controlWithSecondaryTask(self, 
+    theta1, 
+    theta2, 
+    theta3, 
+    theta4,
+    targetX, 
+    targetY, 
+    targetZ,
+    orangeX, 
+    orangeY, 
+    orangeZ):
+
+    # get current time step and calculate dt
+    cur_time = np.array([rospy.get_time()])
+    dt = cur_time - self.time_previous_step
+    self.time_previous_step = cur_time
+
+    # get dq
+    dq1 = theta1 - self.prev_theta1
+    if dq1 < 0.01:
+      dq1 = 0.01
+    dq2 = theta2 - self.prev_theta2
+    if dq2 < 0.01:
+      dq2 = 0.01    
+    dq3 = theta3 - self.prev_theta3
+    if dq3 < 0.01:
+      dq3 = 0.01    
+    dq4 = theta4 - self.prev_theta4
+    if dq4 < 0.01:
+      dq4 = 0.01    
+    self.prev_theta1 = theta1
+    self.prev_theta2 = theta2
+    self.prev_theta3 = theta3
+    self.prev_theta4 = theta4
+
+    # distance between end effector and orange square
+    distance = self.getEndEffectorToSquareDistance(theta1, theta2, theta3, theta4, orangeX, orangeY, orangeZ)
+    distance_diff = distance - self.prev_distance
+    self.prev_distance = distance
+
+    # calculate derivative of cost with respect to joint angles
+    dw_dq = np.array([distance_diff/dq1, distance_diff/dq2, distance_diff/dq3, distance_diff/dq4])
+
+    # get end effector and target pos
+    endEffectorPosition = self.getEndEffectorXYZ(theta1, theta2, theta3, theta4)
+    targetPos = np.array([targetX, targetY, targetZ])
+
+    # estimate derivative of error
+    self.secondary_error_d = ((targetPos - endEffectorPosition) - self.secondary_error)/dt
+    self.secondary_error = targetPos - endEffectorPosition   
+
+    # get jacobian and calculate jacobian pseudoinverse
+    J = self.getJacobian(theta1, theta2, theta3, theta4)
+    J_inv = np.linalg.pinv(J)
+    J_pseudo_inv = J.T @ np.linalg.pinv((J @ J.T))
+
+    q = np.array([theta1, theta2, theta3, theta4])
+    dq_d = np.dot(J_pseudo_inv, self.secondary_error_d) + np.dot((np.eye(4) - (J_pseudo_inv @ J)), dw_dq)
+    print(dq_d)
+    q_d  = q + (dt * dq_d)
+    self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
+
+
+    return 1
 
 
   # Recieve data from camera 1, process it, and publish
@@ -553,8 +703,9 @@ class image_converter:
     # SECTION 3.2
 
     # keep first joint angle zero
-    theta1 = 0.0
-    theta3 = self.jointAngle3Data
+    theta1 = self.theta1
+    theta3 = float(self.jointAngle3Data)
+
 
     # target position:
     targetY = self.targetYPosData
@@ -570,8 +721,30 @@ class image_converter:
         targetY, 
         targetZ)
 
-    # im2=cv2.imshow('window2', self.cv_image1)
-    # cv2.waitKey(1)
+
+
+
+    # SECTION 4.2
+    orangeSquareX, orangeSquareZ = self.getOrangeSquareCoordinates(self.cv_image1)
+    orangeSquareY = self.orangeYPosData
+
+    if not self.prev_distance:
+      self.prev_distance = self.getEndEffectorToSquareDistance(theta1, theta2, theta3, theta4, orangeSquareX, orangeSquareY, orangeSquareZ)
+
+    self.controlWithSecondaryTask(
+        theta1, 
+        theta2, 
+        theta3, 
+        theta4,
+        targetX, 
+        targetY, 
+        targetZ,
+        orangeSquareX, 
+        orangeSquareY, 
+        orangeSquareZ)
+
+    im2=cv2.imshow('window2', self.cv_image1)
+    cv2.waitKey(1)
 
 
 # call the class
