@@ -616,16 +616,13 @@ class image_converter:
     # get jacobian and calculate jacobian pseudoinverse
     J = self.getJacobian(theta1, theta2, theta3, theta4)
     J_inv = np.linalg.pinv(J)
-    J_pseudo_inv = J.T @ np.linalg.pinv((J @ J.T))
+    J_pseudo_inv = np.dot(J.T, np.linalg.pinv((np.dot(J, J.T))))
 
     q = np.array([theta1, theta2, theta3, theta4])
-    dq_d = np.dot(J_pseudo_inv, self.secondary_error_d) + np.dot((np.eye(4) - (J_pseudo_inv @ J)), dw_dq)
-    print(dq_d)
+    dq_d = np.dot(J_pseudo_inv, self.secondary_error_d) + np.dot((np.eye(4) - np.dot(J_pseudo_inv, J)), dw_dq)
     q_d  = q + (dt * dq_d)
+    
     self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
-
-
-    return 1
 
 
   # Recieve data from camera 1, process it, and publish
@@ -743,8 +740,8 @@ class image_converter:
         orangeSquareY, 
         orangeSquareZ)
 
-    im2=cv2.imshow('window2', self.cv_image1)
-    cv2.waitKey(1)
+    # im2=cv2.imshow('window2', self.cv_image1)
+    # cv2.waitKey(1)
 
 
 # call the class
