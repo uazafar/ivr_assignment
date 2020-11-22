@@ -19,6 +19,7 @@ class image_converter:
 
     # define flag to determine whether joints should be modulated using sinusoids
     self.modulateJointsWithSinusoids = 0
+    self.controlRobotWithClosedLoopControl = 1
 
     self.meterPerPixel = None
 
@@ -34,6 +35,12 @@ class image_converter:
     self.d1, self.d2, self.d3, self.d4 = 2.5, 0.0, 0.0, 0.0
     self.a1, self.a2, self.a3, self.a4 = 0.0, 0.0, -3.5, -3.0
     self.alpha1, self.alpha2, self.alpha3, self.alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
+
+
+    self.t1 = 0.0
+    self.t2 = 0.0
+    self.t3 = 0.0
+    self.t4 = 0.0
 
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
@@ -467,9 +474,10 @@ class image_converter:
     dq_d =np.dot(J_inv, ( np.dot(K_d,self.error_d.transpose()) + np.dot(K_p,self.error.transpose()) ) )
     q_d = q + (dt * dq_d)
     # keep joint 1 fixed
-    q_d[0] = 0.0
+    # q_d[0] = 0.0
     self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
-    
+
+
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
 
@@ -552,14 +560,15 @@ class image_converter:
     targetY = self.targetYPosData
 
     # closed loop control:
-    self.closedLoopControl(    
-      theta1, 
-      theta2, 
-      theta3, 
-      theta4,
-      targetX, 
-      targetY, 
-      targetZ)
+    if self.controlRobotWithClosedLoopControl == 1:
+      self.closedLoopControl(    
+        theta1, 
+        theta2, 
+        theta3, 
+        theta4,
+        targetX, 
+        targetY, 
+        targetZ)
 
     # im2=cv2.imshow('window2', self.cv_image1)
     # cv2.waitKey(1)
