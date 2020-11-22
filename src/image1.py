@@ -27,7 +27,8 @@ class image_converter:
     self.redCircleCache = []
     self.blueCircleCache = []
     self.yellowCircleCache = []
-    self.objectCache = []
+    # if object not visible straight away, initialise with the following position (behind robot)
+    self.objectCache = [[400,400]]
 
     # Define D-H variables
     self.d1, self.d2, self.d3, self.d4 = 2.5, 0.0, 0.0, 0.0
@@ -45,12 +46,11 @@ class image_converter:
     
     self.image_sub1 = rospy.Subscriber("/camera1/robot/image_raw",Image,self.callback1)
 
+    # joint 3 angle and target Y pos require running image2.py
     self.jointAngle3 = rospy.Subscriber("/jointAngle3", Float64, self.getJointAngle3)
     self.jointAngle3Data = Float64()
     self.targetYPos = rospy.Subscriber("/targetYPosEst", Float64, self.getTargetYPos)
-    self.targetYPosData = Float64()    
-    # self.robotJointStates = rospy.Subscriber("/robot/joint_states", JointState, self.getRobotJointState)
-    # self.robotJointStatesData = JointState()
+    self.targetYPosData = Float64() 
 
     # initialize a publisher to send joints' angular position to the robot
     self.robot_joint1_pub = rospy.Publisher("/robot/joint1_position_controller/command", Float64, queue_size=10)
@@ -430,7 +430,45 @@ class image_converter:
       self.robot_joint3_pub.publish(self.joint3)
       self.robot_joint4_pub.publish(self.joint4)
     except CvBridgeError as e:
-      print(e)      
+      print(e)   
+
+  def closedLoopControl(self, 
+    theta1, 
+    theta2, 
+    theta3, 
+    theta4,
+    targetX, 
+    targetY, 
+    targetZ):
+    # P gain
+    K_p = np.array([[15,0,0],[0,15,0], [0,0,15]])
+    # D gain
+    K_d = np.array([[0.01,0,0],[0,0.01,0], [0,0,0.01]])
+
+    # get current time step and calculate dt
+    cur_time = np.array([rospy.get_time()])
+    dt = cur_time - self.time_previous_step
+    self.time_previous_step = cur_time
+
+    # get end effector and target pos
+    endEffectorPosition = self.getEndEffectorXYZ(theta1, theta2, theta3, theta4)
+    targetPos = np.array([targetX, targetY, targetZ])
+
+    # estimate derivative of error
+    self.error_d = ((targetPos - endEffectorPosition) - self.error)/dt
+    self.error = targetPos - endEffectorPosition
+
+    # calculate jacobian
+    jacobian = self.getJacobian(theta1, theta2, theta3, theta4)
+
+    # calculate change in joint angles required
+    J_inv = np.linalg.pinv(jacobian)
+    q = np.array([theta1, theta2, theta3, theta4])
+    dq_d =np.dot(J_inv, ( np.dot(K_d,self.error_d.transpose()) + np.dot(K_p,self.error.transpose()) ) )
+    q_d = q + (dt * dq_d)
+    # keep joint 1 fixed
+    q_d[0] = 0.0
+    self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
     
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
@@ -504,49 +542,24 @@ class image_converter:
     # robot position when all angles zero
     # endEffectorStraight = self.getEndEffectorXYZ(0,0,0,0)
 
-
-
-
-
     # SECTION 3.2
 
-    # detected angles needed for inverse kinematics:
+    # keep first joint angle zero
     theta1 = 0.0
     theta3 = self.jointAngle3Data
 
     # target position:
     targetY = self.targetYPosData
 
-
     # closed loop control:
-
-    # P gain
-    K_p = np.array([[15,0,0],[0,15,0], [0,0,15]])
-    # D gain
-    K_d = np.array([[0.01,0,0],[0,0.01,0], [0,0,0.01]])
-
-    cur_time = np.array([rospy.get_time()])
-    dt = cur_time - self.time_previous_step
-    self.time_previous_step = cur_time
-
-    endEffectorPosition = self.getEndEffectorXYZ(theta1, theta2, theta3, theta4)
-
-    targetPos = np.array([targetX, targetY, targetZ])
-
-    # estimate derivative of error
-    self.error_d = ((targetPos - endEffectorPosition) - self.error)/dt
-    self.error = targetPos - endEffectorPosition
-
-    jacobian = self.getJacobian(theta1, theta2, theta3, theta4)
-    J_inv = np.linalg.pinv(jacobian)
-    q = np.array([theta1, theta2, theta3, theta4])
-    dq_d =np.dot(J_inv, ( np.dot(K_d,self.error_d.transpose()) + np.dot(K_p,self.error.transpose()) ) )
-    q_d = q + (dt * dq_d)
-    # keep joint 1 fixed
-    q_d[0] = 0.0
-    self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
-
-
+    self.closedLoopControl(    
+      theta1, 
+      theta2, 
+      theta3, 
+      theta4,
+      targetX, 
+      targetY, 
+      targetZ)
 
     # im2=cv2.imshow('window2', self.cv_image1)
     # cv2.waitKey(1)

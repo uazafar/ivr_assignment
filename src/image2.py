@@ -24,7 +24,8 @@ class image_converter:
     self.redCircleCache = []
     self.blueCircleCache = []
     self.yellowCircleCache = []
-    self.objectCache = []
+    # if object not visible straight away, initialise with the following position (behind robot)
+    self.objectCache = [[400,400]]
 
     self.meterPerPixel = None
 
