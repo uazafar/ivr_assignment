@@ -23,15 +23,15 @@ class image_converter:
     # SECTION 2.1
     self.modulateJointsWithSinusoids = 0
     # SECTION 3,2
-    self.controlRobotWithClosedLoopControl = 1
+    self.controlRobotWithClosedLoopControl = 0
     # SECTION 4.2
-    self.controlRobotWithSecondaryTask = 0
+    self.controlRobotWithSecondaryTask = 1
 
     # change flag if want to export data
     self.exportTargetPosition = 0
     self.exportSinusoidAngles = 0
     self.exportClosedLoopControlUsingCVData = 0
-    self.exportClosedLoopControlData = 1
+    self.exportClosedLoopControlData = 0
     self.exportSecondaryTaskControlData = 0
     self.exportEstimatedTargetPositionData = 0
 
@@ -667,7 +667,7 @@ class image_converter:
     self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
 
 
-
+  # this function calculates the angles using integration - less stable but gives smoother results when it works
   def closedLoopControl(self,
     endEffX,
     endEffY,
@@ -734,17 +734,16 @@ class image_converter:
       closedLoopControlResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/closedLoopControlResults.csv')    
 
 
-  def getEndEffectorToSquareDistance(self, theta1, theta2, theta3, theta4, orangeX, orangeY, orangeZ):
-    endEffectorPos = self.getEndEffectorXYZ(theta1, theta2, theta3, theta4)
+  def getEndEffectorToSquareDistance(self, endEffX, endEffY, endEffZ, orangeX, orangeY, orangeZ):
+    endEffectorPos = np.array([endEffX, endEffY, endEffZ])
     squarePos = np.array([orangeX, orangeY, orangeZ])
     distance = np.sqrt(np.sum((endEffectorPos-squarePos)**2))
     return distance
 
-  def controlWithSecondaryTask(self, 
-    theta1, 
-    theta2, 
-    theta3, 
-    theta4,
+  def controlWithSecondaryTask(self,
+    endEffX,
+    endEffY,
+    endEffZ,
     targetX, 
     targetY, 
     targetZ,
@@ -757,9 +756,11 @@ class image_converter:
     dt = cur_time - self.time_previous_step
     self.time_previous_step = cur_time
 
-    theta1 = self.theta1
-    theta2, theta4 = self.getTheta2And4(self.cv_image1)
-    theta3 = theta3 = float(self.jointAngle3Data)    
+    # set joint angle values
+    theta1 = self.t1
+    theta2 = self.t2
+    theta3 = self.t3
+    theta4 = self.t4  
 
     # get dq
     dq1 = theta1 - self.prev_theta1
@@ -773,14 +774,20 @@ class image_converter:
       dq3 = 0.01    
     dq4 = theta4 - self.prev_theta4
     if dq4 < 0.01:
-      dq4 = 0.01    
-    self.prev_theta1 = theta1
-    self.prev_theta2 = theta2
-    self.prev_theta3 = theta3
-    self.prev_theta4 = theta4
+      dq4 = 0.01  
+
+    try:
+      rate = rospy.Rate(12)
+      rate.sleep()      
+      self.prev_theta1 = theta1
+      self.prev_theta2 = theta2
+      self.prev_theta3 = theta3
+      self.prev_theta4 = theta4
+    except:
+      print("Update failed.")
 
     # distance between end effector and orange square
-    distance = self.getEndEffectorToSquareDistance(theta1, theta2, theta3, theta4, orangeX, orangeY, orangeZ)
+    distance = self.getEndEffectorToSquareDistance(endEffX, endEffY, endEffZ, orangeX, orangeY, orangeZ)
     distance_diff = distance - self.prev_distance
     self.prev_distance = distance
 
@@ -788,7 +795,7 @@ class image_converter:
     dw_dq = np.array([distance_diff/dq1, distance_diff/dq2, distance_diff/dq3, distance_diff/dq4])
 
     # get end effector and target pos
-    endEffectorPosition = self.getEndEffectorXYZ(theta1, theta2, theta3, theta4)
+    endEffectorPosition = np.array([endEffX, endEffY, endEffZ])
     targetPos = np.array([targetX, targetY, targetZ])
 
     # estimate derivative of error
@@ -828,7 +835,11 @@ class image_converter:
     # publish angles
     self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
 
-
+    # new joint angle values
+    self.t1 = q_d[0]
+    self.t2 = q_d[1]
+    self.t3 = q_d[2]
+    self.t4 = q_d[3]
 
 
   def exportDetectedSinusoidAngles(self, theta2, inputAngle2, theta3, inputAngle3, theta4, inputAngle4):
@@ -966,6 +977,7 @@ class image_converter:
         targetY, 
         targetZ)
 
+      # second function to perform control using cv to detect angles
       # self.closedLoopControlUsingCV(    
       #   theta1, 
       #   theta2, 
@@ -987,14 +999,13 @@ class image_converter:
     if self.controlRobotWithSecondaryTask == 1:
       # set distance from end effector to orange square
       if not self.prev_distance:
-        self.prev_distance = self.getEndEffectorToSquareDistance(theta1, theta2, theta3, theta4, orangeSquareX, orangeSquareY, orangeSquareZ)
+        self.prev_distance = self.getEndEffectorToSquareDistance(endEffX, endEffY, endEffZ, orangeSquareX, orangeSquareY, orangeSquareZ)
 
       # perform control
       self.controlWithSecondaryTask(
-          theta1,
-          theta2, 
-          theta3, 
-          theta4,
+          endEffX,
+          endEffY,
+          endEffZ,
           targetX, 
           targetY, 
           targetZ,
