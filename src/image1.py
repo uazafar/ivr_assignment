@@ -23,7 +23,7 @@ class image_converter:
     # SECTION 2.1
     self.modulateJointsWithSinusoids = 0
     # SECTION 3,2
-    self.controlRobotWithClosedLoopControl = 1
+    self.controlRobotWithClosedLoopControl = 0
     # SECTION 4.2
     self.controlRobotWithSecondaryTask = 0
 
@@ -84,6 +84,10 @@ class image_converter:
 
     self.orangeYPos = rospy.Subscriber("/orangeYPosEst", Float64, self.getOrangeYPos)
     self.orangeYPosData = Float64() 
+
+    # end effector position using cv
+    self.endEffYPos = rospy.Subscriber("/endEffYPos", Float64, self.getEndEffY)
+    self.endEffYPosData = Float64() 
 
     # initialize a publisher to send joints' angular position to the robot
     self.robot_joint1_pub = rospy.Publisher("/robot/joint1_position_controller/command", Float64, queue_size=10)
@@ -176,6 +180,13 @@ class image_converter:
     except CvBridgeError as e:
       print(e) 
 
+  def getEndEffY(self, data):
+    try:
+      self.endEffYPosData = data.data
+    except CvBridgeError as e:
+      print(e) 
+
+
 
   # In this method you can focus on detecting the centre of the red circle
   def detect_red(self,image):
@@ -232,6 +243,26 @@ class image_converter:
       cx = int(M['m10'] / M['m00'])
       cy = int(M['m01'] / M['m00'])
       return np.array([cx, cy])
+
+
+  # Calculate the conversion from pixel to meter
+  def pixel2meterYellowToRed(self,image):
+      # Obtain the centre of each coloured blob
+      try:
+        circle1Pos = self.detect_yellow(image)
+        self.cacheYellowCirclePos(circle1Pos)
+      except:
+        circle1Pos = self.yellowCircleCache[-1]
+
+      try:
+        circle2Pos = self.detect_red(image)
+        self.cacheRedCirclePos(circle2Pos)
+      except:
+        circle2Pos = self.redCircleCache[-1]
+
+      # find the distance between two circles
+      dist = np.sum((circle1Pos - circle2Pos)**2)
+      return 9 / np.sqrt(dist)
 
 
   # Calculate the conversion from pixel to meter
@@ -519,6 +550,32 @@ class image_converter:
 
     return orangeSquareX, orangeSquareZ  
 
+  # this function calculates enf effector position using cv (not FK)
+  def getEndEffectorCoordinates(self, image):  
+    # get position red circle
+    try:
+      endEffPos = self.detect_red(image)
+      self.cacheRedCirclePos(endEffPos)
+    except:
+      endEffPos = self.redCircleCache[-1]
+    # position of first joint
+    try:
+      joint1Pos = self.detect_yellow(image)
+      self.cacheYellowCirclePos(joint1Pos)
+    except:
+      joint1Pos = self.yellowCircleCache[-1]
+
+    # calculate distance from base to object
+    # x, y, z of target is based on base frame as defined through D-H
+    distBaseToEEPixels = np.sum((joint1Pos - endEffPos)**2)
+    distBaseToEEMeters = self.meterPerPixel * np.sqrt(distBaseToEEPixels)    
+    baseToEEAngle = np.arctan2(joint1Pos[0]- endEffPos[0], joint1Pos[1] - endEffPos[1])
+    endEffZ = distBaseToEEMeters*np.cos(baseToEEAngle)
+    endEffX = distBaseToEEMeters*np.sin(baseToEEAngle)*-1   
+
+    return endEffX, endEffZ 
+
+
   def publishJointAngles(self, theta1, theta2, theta3, theta4):
 
     # adjust joint angles
@@ -735,7 +792,7 @@ class image_converter:
 
     # calculate meters per pixel and store value
     if not self.meterPerPixel:
-      self.meterPerPixel = self.pixel2meterYellowToBlue(self.cv_image1)      
+      self.meterPerPixel = self.pixel2meterYellowToRed(self.cv_image1)      
     
     # Uncomment if you want to save the image
     #cv2.imwrite('image_copy.png', cv_image)
@@ -808,8 +865,9 @@ class image_converter:
     # robot position when all angles zero
     # endEffectorStraight = self.getEndEffectorXYZ(0,0,0,0)
 
-
-
+    # end effector position as calculated using cv:
+    endEffX, endEffZ = self.getEndEffectorCoordinates(self.cv_image1)
+    endEffY = self.endEffYPosData
 
     # SECTION 3.2
 

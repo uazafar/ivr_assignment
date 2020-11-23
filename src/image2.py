@@ -50,6 +50,10 @@ class image_converter:
     self.jointAngle3 = rospy.Publisher("jointAngle3", Float64, queue_size=10)
     self.targetYPosEst = rospy.Publisher("targetYPosEst", Float64, queue_size=10)
     self.orangeYPosEst = rospy.Publisher("orangeYPosEst", Float64, queue_size=10)
+
+    # position of end effector as calculated using cv
+    self.endEffYPos = rospy.Publisher("endEffYPos", Float64, queue_size=10)
+
     # self.actualJointAngle3 = rospy.Publisher("actualJointAngle3", Float64, queue_size=10)
     # self.rate = rospy.Rate(10) #hz
     self.time = rospy.get_time()
@@ -162,6 +166,26 @@ class image_converter:
       # find the distance between two circles
       dist = np.sum((circle1Pos - circle2Pos)**2)
       return 2.5 / np.sqrt(dist)
+
+  # Calculate the conversion from pixel to meter
+  def pixel2meterYellowToRed(self,image):
+      # Obtain the centre of each coloured blob
+      try:
+        circle1Pos = self.detect_yellow(image)
+        self.cacheYellowCirclePos(circle1Pos)
+      except:
+        circle1Pos = self.yellowCircleCache[-1]
+
+      try:
+        circle2Pos = self.detect_red(image)
+        self.cacheRedCirclePos(circle2Pos)
+      except:
+        circle2Pos = self.redCircleCache[-1]
+
+      # find the distance between two circles
+      dist = np.sum((circle1Pos - circle2Pos)**2)
+      return 9 / np.sqrt(dist)
+
 
   # Calculate the conversion from pixel to meter
   def pixel2meterBlueToGreen(self,image):
@@ -321,6 +345,31 @@ class image_converter:
     return orangeSquareY, orangeSquareZ   
 
 
+  def getEndEffectorCoordinates(self, image):
+    # get position red circle
+    try:
+      endEffPos = self.detect_red(image)
+      self.cacheRedCirclePos(endEffPos)
+    except:
+      endEffPos = self.redCircleCache[-1]
+    # position of first joint
+    try:
+      joint1Pos = self.detect_yellow(image)
+      self.cacheYellowCirclePos(joint1Pos)
+    except:
+      joint1Pos = self.yellowCircleCache[-1]
+
+
+    # calculate distance from base to object
+    distBaseToEEPixels = np.sum((joint1Pos - endEffPos)**2)   
+    distBaseToEEMeters = self.meterPerPixel * np.sqrt(distBaseToEEPixels) 
+    baseToEEAngle = np.arctan2(joint1Pos[0]- endEffPos[0], joint1Pos[1] - endEffPos[1])
+    endEffZ = distBaseToEEMeters*np.cos(baseToEEAngle)
+    endEffY = distBaseToEEMeters*np.sin(baseToEEAngle)    
+    
+    return endEffY, endEffZ 
+
+
   def getObjectCoordinates(self, image):
     try:
       objectPos = self.get_object_coordinates(image)
@@ -365,7 +414,7 @@ class image_converter:
 
     # calculate metes per pixel and store value
     if not self.meterPerPixel:
-      self.meterPerPixel = self.pixel2meterYellowToBlue(self.cv_image2)
+      self.meterPerPixel = self.pixel2meterYellowToRed(self.cv_image2)
 
     # SECTION 2.1
     theta3 = self.getTheta3(self.cv_image2)
@@ -391,6 +440,19 @@ class image_converter:
     self.package = Float64()
     self.package.data = theta3
     self.jointAngle3.publish(self.package)  
+
+
+
+    # SECTION 3.2
+
+    # publish position of end effector as calculated using cv
+    endEffY, _  = self.getEndEffectorCoordinates(self.cv_image2)
+    self.package = Float64()
+    self.package.data = endEffY
+    self.endEffYPos.publish(self.package)
+
+
+
 
     # im2=cv2.imshow('window2', self.cv_image2)
     # cv2.waitKey(1)
