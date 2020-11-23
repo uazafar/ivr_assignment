@@ -12,6 +12,7 @@ from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Float64MultiArray, Float64
 from cv_bridge import CvBridge, CvBridgeError
 import message_filters
+import time
 
 
 class image_converter:
@@ -23,9 +24,9 @@ class image_converter:
     # SECTION 2.1
     self.modulateJointsWithSinusoids = 0
     # SECTION 3,2
-    self.controlRobotWithClosedLoopControl = 0
+    self.controlRobotWithClosedLoopControl = 1
     # SECTION 4.2
-    self.controlRobotWithSecondaryTask = 1
+    self.controlRobotWithSecondaryTask = 0
 
     # change flag if want to export data
     self.exportTargetPosition = 0
@@ -40,6 +41,7 @@ class image_converter:
     self.closedLoopControlResults = []
     self.sinusoidAngleResults = []    
     self.secondaryTaskControlResults = []
+    self.endEffectorPositions = []
 
     self.meterPerPixel = None
 
@@ -460,6 +462,7 @@ class image_converter:
     return jacobian
 
 
+  # get end effector positon using FK
   def getEndEffectorXYZ(self, theta1, theta2, theta3, theta4):
     # end effector matrix
     endEffectorPosInBaseMatrix = self.getEndEffectorToBaseFrameMatrix(
@@ -853,6 +856,7 @@ class image_converter:
       sinusoidAngleResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/detectSinusoidAngles.csv')
 
 
+
   def exportEstimatedTargetPosition(self, targetX, targetY, targetZ):
     if self.exportTargetPosition == 1:
       self.targetXYZPositionResults.append([
@@ -915,7 +919,11 @@ class image_converter:
 
 
     theta2, theta4 = self.getTheta2And4(self.cv_image1)
-    theta3 = float(self.jointAngle3Data)
+    try:
+      theta3 = float(self.jointAngle3Data)
+    # on first iteration, theta3 sometimes unavailable from topic
+    except:
+      theta3 = 0.0
 
     # publish detected joint angles
     self.package = Float64()
@@ -961,6 +969,9 @@ class image_converter:
     # end effector position as calculated using cv:
     endEffX, endEffZ = self.getEndEffectorCoordinates(self.cv_image1)
     endEffY = self.endEffYPosData
+
+
+
 
     # SECTION 3.2
 
