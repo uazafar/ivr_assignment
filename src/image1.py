@@ -19,11 +19,25 @@ class image_converter:
   # Defines publisher and subscriber
   def __init__(self):
 
-    # define flag to determine whether joints should be modulated using sinusoids
+    # define flag to determine, which section of code to run in callback1
+    # SECTION 2.1
     self.modulateJointsWithSinusoids = 0
+    # SECTION 3,2
     self.controlRobotWithClosedLoopControl = 1
-    self.exportClosedLoopControlData = 1
+    # SECTION 4.2
     self.controlRobotWithSecondaryTask = 0
+
+    # change flag if want to export data
+    self.exportTargetPosition = 0
+    self.exportSinusoidAngles = 0
+    self.exportClosedLoopControlData = 0
+    self.exportSecondaryTaskControlData = 0
+
+    # data array to store results
+    self.targetXYZPositionResults = []    
+    self.closedLoopControlResults = []
+    self.sinusoidAngleResults = []    
+    self.secondaryTaskControlResults = []
 
     self.meterPerPixel = None
 
@@ -43,16 +57,13 @@ class image_converter:
 
     self.theta1 = 0.0
 
-    # data for exports
-    self.closedLoopControlResults = []
+    # store previous angles for section 4.2
+    self.prev_theta1 = 0.0
+    self.prev_theta2 = 0.0
+    self.prev_theta3 = 0.0
+    self.prev_theta4 = 0.0
 
-    # # store previous angles
-    # self.prev_theta1 = 0.0
-    # self.prev_theta2 = 0.0
-    # self.prev_theta3 = 0.0
-    # self.prev_theta4 = 0.0
-
-    # self.t1, self.t2, self.t3, self.t4 = 0.0, 0.0, 0.0, 0.0
+    
 
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
@@ -584,7 +595,6 @@ class image_converter:
       closedLoopControlResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/closedLoopControlResults.csv')
 
     self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
-    # self.theta1 = q_d[0]
 
   def getEndEffectorToSquareDistance(self, theta1, theta2, theta3, theta4, orangeX, orangeY, orangeZ):
     endEffectorPos = self.getEndEffectorXYZ(theta1, theta2, theta3, theta4)
@@ -608,6 +618,10 @@ class image_converter:
     cur_time = np.array([rospy.get_time()])
     dt = cur_time - self.time_previous_step
     self.time_previous_step = cur_time
+
+    theta1 = self.theta1
+    theta2, theta4 = self.getTheta2And4(self.cv_image1)
+    theta3 = theta3 = float(self.jointAngle3Data)    
 
     # get dq
     dq1 = theta1 - self.prev_theta1
@@ -649,21 +663,63 @@ class image_converter:
     J_pseudo_inv = np.dot(J.T, np.linalg.pinv((np.dot(J, J.T))))
 
     q = np.array([theta1, theta2, theta3, theta4])
-    dq_d = np.dot(J_pseudo_inv, self.secondary_error_d) + np.dot((np.eye(4) - np.dot(J_pseudo_inv, J)), dw_dq)
+    dq_d = np.dot(J_pseudo_inv, self.secondary_error_d) + np.dot((np.eye(4) - np.dot(J_pseudo_inv, J)), dw_dq  )
     q_d  = q + (dt * dq_d)
+
+    # export results
+    if self.exportSecondaryTaskControlData == 1:
+      self.secondaryTaskControlResults.append([
+        rospy.get_time(), 
+        targetX, 
+        endEffectorPosition[0],
+        targetY,
+        endEffectorPosition[1],
+        targetZ,
+        endEffectorPosition[2],
+        orangeX, 
+        orangeY, 
+        orangeZ])
+      secondaryTaskControlResultsDF = pd.DataFrame(
+        self.secondaryTaskControlResults, 
+        columns=['time', 'targetX', 'endEffectorX', 'targetY', 'endEffectorY', 'targetZ', 'endEffectorZ',
+        'orangeX', 
+        'orangeY', 
+        'orangeZ'])
+      secondaryTaskControlResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/secondaryTaskControlResults.csv')
+
+    # publish angles
     self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
 
-    print("qd:")
-    print(q_d[0], q_d[1], q_d[2], q_d[3])
-    print()
-    self.t1 = q_d[0]
-    self.t2 = q_d[1]
-    self.t3 = q_d[2]
-    self.t4 = q_d[3]
+
+
+
+  def exportDetectedSinusoidAngles(self, theta2, inputAngle2, theta3, inputAngle3, theta4, inputAngle4):
+    if self.exportSinusoidAngles == 1:
+      self.sinusoidAngleResults.append([
+        rospy.get_time(),
+        inputAngle2, theta2, inputAngle3, theta3, inputAngle4, theta4])
+      sinusoidAngleResultsDF = pd.DataFrame(
+        self.sinusoidAngleResults, 
+        columns=['time', 'inputAngle2', 'theta2', 'inputAngle3', 'theta3', 'inputAngle4', 'theta4'])
+      sinusoidAngleResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/detectSinusoidAngles.csv')
+
+
+  def exportEstimatedTargetPosition(self, targetX, targetY, targetZ):
+    if self.exportTargetPosition == 1:
+      self.targetXYZPositionResults.append([
+        rospy.get_time(),
+        targetX, targetY, targetZ])
+      targetXYZPositionResultsDF = pd.DataFrame(
+        self.targetXYZPositionResults, 
+        columns=['time', 'targetX', 'targetY', 'targetZ'])
+      targetXYZPositionResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/targetPosition.csv')
 
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
+
+    # ensure only 1 flag set to 1:
+    assert self.modulateJointsWithSinusoids + self.controlRobotWithClosedLoopControl + self.controlRobotWithSecondaryTask <= 1, "Please only set one flag to 1"
 
     # Recieve the image
     try:
@@ -677,12 +733,16 @@ class image_converter:
     except CvBridgeError as e:
       print(e)      
 
-    # calculate metes per pixel and store value
+    # calculate meters per pixel and store value
     if not self.meterPerPixel:
       self.meterPerPixel = self.pixel2meterYellowToBlue(self.cv_image1)      
     
     # Uncomment if you want to save the image
     #cv2.imwrite('image_copy.png', cv_image)
+
+
+
+
 
     # SECTION 2.1
     if self.modulateJointsWithSinusoids == 1:
@@ -706,6 +766,7 @@ class image_converter:
 
 
     theta2, theta4 = self.getTheta2And4(self.cv_image1)
+    theta3 = float(self.jointAngle3Data)
 
     # publish detected joint angles
     self.package = Float64()
@@ -715,9 +776,22 @@ class image_converter:
     self.package.data = theta4
     self.jointAngle4.publish(self.package)
 
+    # export input and detected angles when joints modulated with sinusoids 
+    if self.exportSinusoidAngles == 1 and self.modulateJointsWithSinusoids == 1:
+      self.exportDetectedSinusoidAngles(theta2, inputAngle2, theta3, inputAngle3, theta4, inputAngle4)    
+
+
+
+
 
     #SECTION 2.2:
     targetX, targetZ = self.getObjectCoordinates(self.cv_image1)
+    # target Y position:
+    targetY = self.targetYPosData    
+
+    # export data
+    self.exportEstimatedTargetPosition(targetX, targetY, targetZ)
+
 
     # publish estimated position of target
     self.package = Float64()
@@ -740,11 +814,7 @@ class image_converter:
     # SECTION 3.2
 
     # keep first joint angle zero
-    theta1 = 0.0
-    theta3 = float(self.jointAngle3Data)
-
-    # target position:
-    targetY = self.targetYPosData
+    theta1 = self.theta1
 
     # closed loop control:
     if self.controlRobotWithClosedLoopControl == 1:
@@ -759,33 +829,32 @@ class image_converter:
 
 
 
+
     # SECTION 4.2
+
+    # get orange square coordinates
     orangeSquareX, orangeSquareZ = self.getOrangeSquareCoordinates(self.cv_image1)
     orangeSquareY = self.orangeYPosData
 
-    # theta1 = self.t1
-    # theta2 = self.t2
-    # theta3 = self.t3
-    # theta4 = self.t4
-    # print("thetas:")
-    # print(theta1, theta2, theta3, theta4)
-    # print()
+    if self.controlRobotWithSecondaryTask == 1:
+      # set distance from end effector to orange square
+      if not self.prev_distance:
+        self.prev_distance = self.getEndEffectorToSquareDistance(theta1, theta2, theta3, theta4, orangeSquareX, orangeSquareY, orangeSquareZ)
 
-    # if not self.prev_distance:
-    #   self.prev_distance = self.getEndEffectorToSquareDistance(theta1, theta2, theta3, theta4, orangeSquareX, orangeSquareY, orangeSquareZ)
+      # perform control
+      self.controlWithSecondaryTask(
+          theta1,
+          theta2, 
+          theta3, 
+          theta4,
+          targetX, 
+          targetY, 
+          targetZ,
+          orangeSquareX, 
+          orangeSquareY, 
+          orangeSquareZ)
 
-    # if self.controlRobotWithSecondaryTask == 1:
-    #   self.controlWithSecondaryTask(
-    #       theta1,
-    #       theta2, 
-    #       theta3, 
-    #       theta4,
-    #       targetX, 
-    #       targetY, 
-    #       targetZ,
-    #       orangeSquareX, 
-    #       orangeSquareY, 
-    #       orangeSquareZ)
+
 
     # im2=cv2.imshow('window2', self.cv_image1)
     # cv2.waitKey(1)
