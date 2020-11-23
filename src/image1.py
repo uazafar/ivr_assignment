@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
 import roslib
+import os
 import sys
 import rospy
 import cv2
 import numpy as np
+import pandas as pd
 from std_msgs.msg import String
 from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Float64MultiArray, Float64
@@ -19,8 +21,9 @@ class image_converter:
 
     # define flag to determine whether joints should be modulated using sinusoids
     self.modulateJointsWithSinusoids = 0
-    self.controlRobotWithClosedLoopControl = 0
-    self.controlRobotWithSecondaryTask = 1
+    self.controlRobotWithClosedLoopControl = 1
+    self.exportClosedLoopControlData = 1
+    self.controlRobotWithSecondaryTask = 0
 
     self.meterPerPixel = None
 
@@ -40,13 +43,16 @@ class image_converter:
 
     self.theta1 = 0.0
 
-    # store previous angles
-    self.prev_theta1 = 0.0
-    self.prev_theta2 = 0.0
-    self.prev_theta3 = 0.0
-    self.prev_theta4 = 0.0
+    # data for exports
+    self.closedLoopControlResults = []
 
-    self.t1, self.t2, self.t3, self.t4 = 0.0, 0.0, 0.0, 0.0
+    # # store previous angles
+    # self.prev_theta1 = 0.0
+    # self.prev_theta2 = 0.0
+    # self.prev_theta3 = 0.0
+    # self.prev_theta4 = 0.0
+
+    # self.t1, self.t2, self.t3, self.t4 = 0.0, 0.0, 0.0, 0.0
 
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
@@ -516,8 +522,6 @@ class image_converter:
 
     # Publish the results
     try:
-      rate = rospy.Rate(50)
-      rate.sleep()
       self.robot_joint1_pub.publish(self.joint1)
       self.robot_joint2_pub.publish(self.joint2)
       self.robot_joint3_pub.publish(self.joint3)
@@ -534,14 +538,19 @@ class image_converter:
     targetY, 
     targetZ):
     # P gain
-    K_p = np.array([[10, 0, 0],[0, 10, 0], [0, 0, 10]])
+    K_p = np.array([[5, 0, 0],[0, 5, 0], [0, 0, 5]])
     # D gain
-    K_d = np.array([[0.1, 0.0, 0.0],[0.0, 0.1, 0.0], [0.0, 0.0, 0.1]])
+    K_d = np.array([[0.01, 0.0, 0.0],[0.0, 0.01, 0.0], [0.0, 0.0, 0.01]])
 
     # get current time step and calculate dt
     cur_time = np.array([rospy.get_time()])
     dt = cur_time - self.time_previous_step
     self.time_previous_step = cur_time
+
+
+    theta1 = self.theta1
+    theta2, theta4 = self.getTheta2And4(self.cv_image1)
+    theta3 = theta3 = float(self.jointAngle3Data)
 
     # get end effector and target pos
     endEffectorPosition = self.getEndEffectorXYZ(theta1, theta2, theta3, theta4)
@@ -560,7 +569,22 @@ class image_converter:
     dq_d =np.dot(J_inv, ( np.dot(K_d,self.error_d.transpose()) + np.dot(K_p,self.error.transpose()) ) )
     q_d = q + (dt * dq_d)
 
+    if self.exportClosedLoopControlData == 1:
+      self.closedLoopControlResults.append([
+        rospy.get_time(), 
+        targetX, 
+        endEffectorPosition[0],
+        targetY,
+        endEffectorPosition[1],
+        targetZ,
+        endEffectorPosition[2]])
+      closedLoopControlResultsDF = pd.DataFrame(
+        self.closedLoopControlResults, 
+        columns=['time', 'targetX', 'endEffectorX', 'targetY', 'endEffectorY', 'targetZ', 'endEffectorZ'])
+      closedLoopControlResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/closedLoopControlResults.csv')
+
     self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
+    # self.theta1 = q_d[0]
 
   def getEndEffectorToSquareDistance(self, theta1, theta2, theta3, theta4, orangeX, orangeY, orangeZ):
     endEffectorPos = self.getEndEffectorXYZ(theta1, theta2, theta3, theta4)
@@ -627,13 +651,15 @@ class image_converter:
     q = np.array([theta1, theta2, theta3, theta4])
     dq_d = np.dot(J_pseudo_inv, self.secondary_error_d) + np.dot((np.eye(4) - np.dot(J_pseudo_inv, J)), dw_dq)
     q_d  = q + (dt * dq_d)
-    
     self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
 
-    self.theta1 = q_d[0]
-    self.theta2 = q_d[1]
-    self.theta3 = q_d[2]
-    self.theta4 = q_d[3]
+    print("qd:")
+    print(q_d[0], q_d[1], q_d[2], q_d[3])
+    print()
+    self.t1 = q_d[0]
+    self.t2 = q_d[1]
+    self.t3 = q_d[2]
+    self.t4 = q_d[3]
 
 
   # Recieve data from camera 1, process it, and publish
@@ -714,7 +740,7 @@ class image_converter:
     # SECTION 3.2
 
     # keep first joint angle zero
-    theta1 = self.theta1
+    theta1 = 0.0
     theta3 = float(self.jointAngle3Data)
 
     # target position:
@@ -733,26 +759,33 @@ class image_converter:
 
 
 
-
     # SECTION 4.2
     orangeSquareX, orangeSquareZ = self.getOrangeSquareCoordinates(self.cv_image1)
     orangeSquareY = self.orangeYPosData
 
-    if not self.prev_distance:
-      self.prev_distance = self.getEndEffectorToSquareDistance(theta1, theta2, theta3, theta4, orangeSquareX, orangeSquareY, orangeSquareZ)
+    # theta1 = self.t1
+    # theta2 = self.t2
+    # theta3 = self.t3
+    # theta4 = self.t4
+    # print("thetas:")
+    # print(theta1, theta2, theta3, theta4)
+    # print()
 
-    if self.controlRobotWithSecondaryTask == 1:
-      self.controlWithSecondaryTask(
-          theta1,
-          theta2, 
-          theta3, 
-          theta4,
-          targetX, 
-          targetY, 
-          targetZ,
-          orangeSquareX, 
-          orangeSquareY, 
-          orangeSquareZ)
+    # if not self.prev_distance:
+    #   self.prev_distance = self.getEndEffectorToSquareDistance(theta1, theta2, theta3, theta4, orangeSquareX, orangeSquareY, orangeSquareZ)
+
+    # if self.controlRobotWithSecondaryTask == 1:
+    #   self.controlWithSecondaryTask(
+    #       theta1,
+    #       theta2, 
+    #       theta3, 
+    #       theta4,
+    #       targetX, 
+    #       targetY, 
+    #       targetZ,
+    #       orangeSquareX, 
+    #       orangeSquareY, 
+    #       orangeSquareZ)
 
     # im2=cv2.imshow('window2', self.cv_image1)
     # cv2.waitKey(1)
