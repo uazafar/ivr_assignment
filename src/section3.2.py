@@ -20,28 +20,13 @@ class image_converter:
   # Defines publisher and subscriber
   def __init__(self):
 
-    # define flag to determine, which section of code to run in callback1
-    # SECTION 2.1
-    self.modulateJointsWithSinusoids = 0
-    # SECTION 3,2
-    self.controlRobotWithClosedLoopControl = 1
-    # SECTION 4.2
-    self.controlRobotWithSecondaryTask = 0
-
     # change flag if want to export data
-    self.exportTargetPosition = 0
-    self.exportSinusoidAngles = 0
     self.exportClosedLoopControlUsingCVData = 0
     self.exportClosedLoopControlData = 0
-    self.exportSecondaryTaskControlData = 0
-    self.exportEstimatedTargetPositionData = 0
 
-    # data array to store results
-    self.targetXYZPositionResults = []    
+    # data array to store results    
     self.closedLoopControlResults = []
     self.sinusoidAngleResults = []    
-    self.secondaryTaskControlResults = []
-    self.endEffectorPositions = []
 
     self.meterPerPixel = None
 
@@ -60,12 +45,6 @@ class image_converter:
     self.alpha1, self.alpha2, self.alpha3, self.alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
 
     self.theta1 = 0.0
-
-    # store previous angles for section 4.2
-    self.prev_theta1 = 0.0
-    self.prev_theta2 = 0.0
-    self.prev_theta3 = 0.0
-    self.prev_theta4 = 0.0
 
     # initialise angles for closed loop control
     self.t1 = 0.0
@@ -91,9 +70,6 @@ class image_converter:
     self.targetYPos = rospy.Subscriber("/targetYPosEst", Float64, self.getTargetYPos)
     self.targetYPosData = Float64() 
 
-    self.orangeYPos = rospy.Subscriber("/orangeYPosEst", Float64, self.getOrangeYPos)
-    self.orangeYPosData = Float64() 
-
     # end effector position using cv
     self.endEffYPos = rospy.Subscriber("/endEffYPos", Float64, self.getEndEffY)
     self.endEffYPosData = Float64() 
@@ -108,13 +84,6 @@ class image_converter:
     # initialize error and derivative of error for trajectory tracking  
     self.error = np.array([0.0,0.0, 0.0], dtype='float64')  
     self.error_d = np.array([0.0,0.0, 0.0], dtype='float64')   
-
-    # initialise error for secondary task control task
-    self.secondary_error = np.array([0.0,0.0, 0.0], dtype='float64')  
-    self.secondary_error_d = np.array([0.0,0.0, 0.0], dtype='float64')
-
-    # initial distance between end effector and orange square
-    self.prev_distance = None
 
     # set up publisher   
     # rospy.init_node('publisher_node',anonymous=True)
@@ -183,11 +152,6 @@ class image_converter:
     except CvBridgeError as e:
       print(e)      
 
-  def getOrangeYPos(self, data):
-    try:
-      self.orangeYPosData = data.data
-    except CvBridgeError as e:
-      print(e) 
 
   def getEndEffY(self, data):
     try:
@@ -363,48 +327,7 @@ class image_converter:
       return keypoints[0].pt
     else:
       return self.objectCache[-1]
-
-  def get_orange_square_coordinates(self, image):
-    # Threshold the HSV image to get only orange colors (of object)
-    mask = cv2.inRange(image, (0,20,100), (40,100,150))
-    res = cv2.bitwise_and(image, image, mask= mask)
-
-    # convert image to greyscale
-    gray = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
-    gray = cv2.medianBlur(gray, 5)
-
-    # create parameters for blob detector to detect circles
-    params = cv2.SimpleBlobDetector_Params()
-    params.filterByArea = False
-    params.filterByInertia = 1.0
-    params.filterByConvexity = False
-    params.filterByCircularity = 1.0
-    params.minCircularity = 0.00
-    params.maxCircularity = 0.82
-
-    detector = cv2.SimpleBlobDetector_create(params)
-
-    # convert black pixels to white and object to black
-    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY)
-    res[thresh == 0] = 255
-    res = cv2.bitwise_not(thresh)
-
-    # detect orange square
-    keypoints = detector.detect(res)
-
-    # if x < 420.5, out of range of square and circle detected. Then return previous correct square position
-    if keypoints:
-      idx = 0
-      if len(keypoints) == 2:
-        if  keypoints[0].pt[0] < 420.0:
-          idx = 1
-      elif len(keypoints) == 1:
-        if keypoints[0].pt[0] < 420.0:
-          return self.orangeSquareCache[-1]
-      self.cacheOrangeSquarePos(keypoints[idx].pt)
-      return keypoints[idx].pt
-    else:
-      return self.orangeSquareCache[-1]      
+     
 
   # A function to transform from one frame to another using 4 D-H parameters
   def transform(self, theta, d, a, alpha):
@@ -539,31 +462,7 @@ class image_converter:
 
     return targetX, targetZ 
 
-  def getOrangeSquareCoordinates(self, image):  
-    # get position of circular object
-    try:
-      orangeSquarePos = self.get_orange_square_coordinates(image)
-      self.cacheObjectPos(orangeSquarePos)
-    except:
-      orangeSquarePos = self.objectCache[-1]
-    # position of first joint
-    try:
-      joint1Pos = self.detect_yellow(image)
-      self.cacheYellowCirclePos(joint1Pos)
-    except:
-      joint1Pos = self.yellowCircleCache[-1]
-
-    # calculate distance from base to object
-    # x, y, z of target is based on base frame as defined through D-H
-    distBaseToObjectPixels = np.sum((joint1Pos - orangeSquarePos)**2)
-    distBaseToObjectMeters = self.meterPerPixel * np.sqrt(distBaseToObjectPixels)    
-    baseToTargetAngle = np.arctan2(joint1Pos[0]- orangeSquarePos[0], joint1Pos[1] - orangeSquarePos[1])
-    orangeSquareZ = distBaseToObjectMeters*np.cos(baseToTargetAngle)
-    orangeSquareX = distBaseToObjectMeters*np.sin(baseToTargetAngle)*-1   
-
-    return orangeSquareX, orangeSquareZ  
-
-  # this function calculates enf effector position using cv (not FK)
+  # this function calculates end effector position using cv (not FK)
   def getEndEffectorCoordinates(self, image):  
     # get position red circle
     try:
@@ -737,142 +636,8 @@ class image_converter:
       closedLoopControlResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/closedLoopControlResults.csv')    
 
 
-  def getEndEffectorToSquareDistance(self, endEffX, endEffY, endEffZ, orangeX, orangeY, orangeZ):
-    endEffectorPos = np.array([endEffX, endEffY, endEffZ])
-    squarePos = np.array([orangeX, orangeY, orangeZ])
-    distance = np.sqrt(np.sum((endEffectorPos-squarePos)**2))
-    return distance
-
-  def controlWithSecondaryTask(self,
-    endEffX,
-    endEffY,
-    endEffZ,
-    targetX, 
-    targetY, 
-    targetZ,
-    orangeX, 
-    orangeY, 
-    orangeZ):
-
-    # get current time step and calculate dt
-    cur_time = np.array([rospy.get_time()])
-    dt = cur_time - self.time_previous_step
-    self.time_previous_step = cur_time
-
-    # set joint angle values
-    theta1 = self.t1
-    theta2 = self.t2
-    theta3 = self.t3
-    theta4 = self.t4  
-
-    # get dq
-    dq1 = theta1 - self.prev_theta1
-    if dq1 < 0.01:
-      dq1 = 0.01
-    dq2 = theta2 - self.prev_theta2
-    if dq2 < 0.01:
-      dq2 = 0.01    
-    dq3 = theta3 - self.prev_theta3
-    if dq3 < 0.01:
-      dq3 = 0.01    
-    dq4 = theta4 - self.prev_theta4
-    if dq4 < 0.01:
-      dq4 = 0.01  
-
-    try:
-      rate = rospy.Rate(12)
-      rate.sleep()      
-      self.prev_theta1 = theta1
-      self.prev_theta2 = theta2
-      self.prev_theta3 = theta3
-      self.prev_theta4 = theta4
-    except:
-      print("Update failed.")
-
-    # distance between end effector and orange square
-    distance = self.getEndEffectorToSquareDistance(endEffX, endEffY, endEffZ, orangeX, orangeY, orangeZ)
-    distance_diff = distance - self.prev_distance
-    self.prev_distance = distance
-
-    # calculate derivative of cost with respect to joint angles
-    dw_dq = np.array([distance_diff/dq1, distance_diff/dq2, distance_diff/dq3, distance_diff/dq4])
-
-    # get end effector and target pos
-    endEffectorPosition = np.array([endEffX, endEffY, endEffZ])
-    targetPos = np.array([targetX, targetY, targetZ])
-
-    # estimate derivative of error
-    self.secondary_error_d = ((targetPos - endEffectorPosition) - self.secondary_error)/dt
-    self.secondary_error = targetPos - endEffectorPosition   
-
-    # get jacobian and calculate jacobian pseudoinverse
-    J = self.getJacobian(theta1, theta2, theta3, theta4)
-    J_inv = np.linalg.pinv(J)
-    J_pseudo_inv = np.dot(J.T, np.linalg.pinv((np.dot(J, J.T))))
-
-    q = np.array([theta1, theta2, theta3, theta4])
-    dq_d = np.dot(J_pseudo_inv, self.secondary_error_d) + np.dot((np.eye(4) - np.dot(J_pseudo_inv, J)), dw_dq  )
-    q_d  = q + (dt * dq_d)
-
-    # export results
-    if self.exportSecondaryTaskControlData == 1:
-      self.secondaryTaskControlResults.append([
-        rospy.get_time(), 
-        targetX, 
-        endEffectorPosition[0],
-        targetY,
-        endEffectorPosition[1],
-        targetZ,
-        endEffectorPosition[2],
-        orangeX, 
-        orangeY, 
-        orangeZ])
-      secondaryTaskControlResultsDF = pd.DataFrame(
-        self.secondaryTaskControlResults, 
-        columns=['time', 'targetX', 'endEffectorX', 'targetY', 'endEffectorY', 'targetZ', 'endEffectorZ',
-        'orangeX', 
-        'orangeY', 
-        'orangeZ'])
-      secondaryTaskControlResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/secondaryTaskControlResults.csv')
-
-    # publish angles
-    self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
-
-    # new joint angle values
-    self.t1 = q_d[0]
-    self.t2 = q_d[1]
-    self.t3 = q_d[2]
-    self.t4 = q_d[3]
-
-
-  def exportDetectedSinusoidAngles(self, theta2, inputAngle2, theta3, inputAngle3, theta4, inputAngle4):
-    if self.exportSinusoidAngles == 1:
-      self.sinusoidAngleResults.append([
-        rospy.get_time(),
-        inputAngle2, theta2, inputAngle3, theta3, inputAngle4, theta4])
-      sinusoidAngleResultsDF = pd.DataFrame(
-        self.sinusoidAngleResults, 
-        columns=['time', 'inputAngle2', 'theta2', 'inputAngle3', 'theta3', 'inputAngle4', 'theta4'])
-      sinusoidAngleResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/detectSinusoidAngles.csv')
-
-
-
-  def exportEstimatedTargetPosition(self, targetX, targetY, targetZ):
-    if self.exportTargetPosition == 1:
-      self.targetXYZPositionResults.append([
-        rospy.get_time(),
-        targetX, targetY, targetZ])
-      targetXYZPositionResultsDF = pd.DataFrame(
-        self.targetXYZPositionResults, 
-        columns=['time', 'targetX', 'targetY', 'targetZ'])
-      targetXYZPositionResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/targetPosition.csv')
-
-
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
-
-    # ensure only 1 flag set to 1:
-    assert self.modulateJointsWithSinusoids + self.controlRobotWithClosedLoopControl + self.controlRobotWithSecondaryTask <= 1, "Please only set one flag to 1"
 
     # Recieve the image
     try:
@@ -895,58 +660,20 @@ class image_converter:
 
 
 
+    # SECTION 3.2
 
-
-    # SECTION 2.1
-    if self.modulateJointsWithSinusoids == 1:
-      # adjust joint angles using sinusoidal signals
-      self.joint2=Float64()
-      inputAngle2 = (np.pi/2) * np.sin((np.pi/15) * rospy.get_time())
-      self.joint2.data = inputAngle2
-      self.joint3=Float64()
-      inputAngle3 = (np.pi/2) * np.sin((np.pi/18) * rospy.get_time())
-      self.joint3.data = inputAngle3    
-      self.joint4=Float64()
-      inputAngle4 = (np.pi/3) * np.sin((np.pi/20) * rospy.get_time())
-      self.joint4.data = inputAngle4      
-      # Publish the results
-      try:
-        self.robot_joint2_pub.publish(self.joint2)
-        self.robot_joint3_pub.publish(self.joint3)
-        self.robot_joint4_pub.publish(self.joint4)
-      except CvBridgeError as e:
-        print(e)
-
-
+    # keep first joint angle zero
+    theta1 = self.theta1
     theta2, theta4 = self.getTheta2And4(self.cv_image1)
     try:
       theta3 = float(self.jointAngle3Data)
     # on first iteration, theta3 sometimes unavailable from topic
     except:
-      theta3 = 0.0
+      theta3 = 0.0    
 
-    # publish detected joint angles
-    self.package = Float64()
-    self.package.data = theta2
-    self.jointAngle2.publish(self.package)
-    self.package = Float64()
-    self.package.data = theta4
-    self.jointAngle4.publish(self.package)
-
-    # export input and detected angles when joints modulated with sinusoids 
-    if self.exportSinusoidAngles == 1 and self.modulateJointsWithSinusoids == 1:
-      self.exportDetectedSinusoidAngles(theta2, inputAngle2, theta3, inputAngle3, theta4, inputAngle4)    
-
-
-    #SECTION 2.2:
     targetX, targetZ = self.getObjectCoordinates(self.cv_image1)
     # target Y position:
     targetY = self.targetYPosData    
-
-    # export data
-    if self.exportEstimatedTargetPositionData == 1:
-      self.exportEstimatedTargetPosition(targetX, targetY, targetZ)
-
 
     # publish estimated position of target
     self.package = Float64()
@@ -954,72 +681,31 @@ class image_converter:
     self.targetZPosEst.publish(self.package)
     self.package = Float64()
     self.package.data = targetX
-    self.targetXPosEst.publish(self.package)
-
-
-
-    # SECTION 3.1
-
-    # robot position when all angles zero
-    # endEffectorStraight = self.getEndEffectorXYZ(0,0,0,0)
+    self.targetXPosEst.publish(self.package)    
 
     # end effector position as calculated using cv:
     endEffX, endEffZ = self.getEndEffectorCoordinates(self.cv_image1)
     endEffY = self.endEffYPosData
 
 
+    # closed loop control using integration to find angles:
+    self.closedLoopControl(
+      endEffX,
+      endEffY,
+      endEffZ,
+      targetX, 
+      targetY, 
+      targetZ)
 
-
-    # SECTION 3.2
-
-    # keep first joint angle zero
-    # theta1 = self.theta1
-
-    # closed loop control:
-    if self.controlRobotWithClosedLoopControl == 1:
-      self.closedLoopControl(
-        endEffX,
-        endEffY,
-        endEffZ,
-        targetX, 
-        targetY, 
-        targetZ)
-
-      # second function to perform control using cv to detect angles
-      # self.closedLoopControlUsingCV(    
-      #   theta1, 
-      #   theta2, 
-      #   theta3, 
-      #   theta4,
-      #   targetX, 
-      #   targetY, 
-      #   targetZ)
-
-
-
-
-    # SECTION 4.2
-
-    # get orange square coordinates
-    orangeSquareX, orangeSquareZ = self.getOrangeSquareCoordinates(self.cv_image1)
-    orangeSquareY = self.orangeYPosData
-
-    if self.controlRobotWithSecondaryTask == 1:
-      # set distance from end effector to orange square
-      if not self.prev_distance:
-        self.prev_distance = self.getEndEffectorToSquareDistance(endEffX, endEffY, endEffZ, orangeSquareX, orangeSquareY, orangeSquareZ)
-
-      # perform control
-      self.controlWithSecondaryTask(
-          endEffX,
-          endEffY,
-          endEffZ,
-          targetX, 
-          targetY, 
-          targetZ,
-          orangeSquareX, 
-          orangeSquareY, 
-          orangeSquareZ)
+    # second function to perform control using cv to detect angles
+    # self.closedLoopControlUsingCV(    
+    #   theta1, 
+    #   theta2, 
+    #   theta3, 
+    #   theta4,
+    #   targetX, 
+    #   targetY, 
+    #   targetZ)
 
 
 

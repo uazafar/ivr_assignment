@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 
 import roslib
+import os
 import sys
 import rospy
 import cv2
 import numpy as np
+import pandas as pd
 from std_msgs.msg import String
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Float64MultiArray, Float64
 from cv_bridge import CvBridge, CvBridgeError
 import message_filters
+import time
 
 
 class image_converter:
@@ -17,8 +20,10 @@ class image_converter:
   # Defines publisher and subscriber
   def __init__(self):
 
-    # define flag to determine whether joints should be modulated using sinusoids
-    self.modulateJointsWithSinusoids = 1
+    self.exportEstimatedTargetPositionData = 0
+
+    # data array to store results
+    self.targetXYZPositionResults = []    
 
     self.meterPerPixel = None
 
@@ -27,12 +32,9 @@ class image_converter:
     self.redCircleCache = []
     self.blueCircleCache = []
     self.yellowCircleCache = []
-    self.objectCache = []
-
-    # Define D-H variables
-    self.d1, self.d2, self.d3, self.d4 = 2.5, 0.0, 0.0, 0.0
-    self.a1, self.a2, self.a3, self.a4 = 0.0, 0.0, -3.5, -3.0
-    self.alpha1, self.alpha2, self.alpha3, self.alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
+    # if object not visible straight away, initialise with the following position (behind robot)
+    self.objectCache = [[400,400]]
+    self.orangeSquareCache = [[500,354]]
 
     # initialize the bridge between openCV and ROS
     self.bridge = CvBridge()
@@ -44,35 +46,23 @@ class image_converter:
     # initialize a subscriber to recieve messages rom a topic named /robot/camera1/image_raw and use callback function to recieve data
     
     self.image_sub1 = rospy.Subscriber("/camera1/robot/image_raw",Image,self.callback1)
-    self.jointAngle3 = rospy.Subscriber("/jointAngle3", Float64, self.getJointAngle3)
-    self.jointAngle3Data = Float64()
 
-    # define variables to store robot joints
-    self.jointAngle3 = rospy.Subscriber("/robot/joint1_position_controller/command", Float64, self.getRobotJoint1State)
-    self.jointAngle3 = rospy.Subscriber("/robot/joint2_position_controller/command", Float64, self.getRobotJoint2State)
-    self.jointAngle3 = rospy.Subscriber("/robot/joint3_position_controller/command", Float64, self.getRobotJoint3State)
-    self.jointAngle3 = rospy.Subscriber("/robot/joint4_position_controller/command", Float64, self.getRobotJoint4State)
-    self.robotJoint1State = Float64()
-    self.robotJoint2State = Float64()
-    self.robotJoint3State = Float64()
-    self.robotJoint4State = Float64()
-
+    # target Y pos require running image2.py
+    self.targetYPos = rospy.Subscriber("/targetYPosEst", Float64, self.getTargetYPos)
+    self.targetYPosData = Float64() 
 
     # initialize a publisher to send joints' angular position to the robot
-    # self.robot_joint1_pub = rospy.Publisher("/robot/joint1_position_controller/command", Float64, queue_size=10)
-    # self.robot_joint2_pub = rospy.Publisher("/robot/joint2_position_controller/command", Float64, queue_size=10)
-    # self.robot_joint3_pub = rospy.Publisher("/robot/joint3_position_controller/command", Float64, queue_size=10) 
-    # self.robot_joint4_pub = rospy.Publisher("/robot/joint4_position_controller/command", Float64, queue_size=10) 
+    self.robot_joint1_pub = rospy.Publisher("/robot/joint1_position_controller/command", Float64, queue_size=10)
+    self.robot_joint2_pub = rospy.Publisher("/robot/joint2_position_controller/command", Float64, queue_size=10)
+    self.robot_joint3_pub = rospy.Publisher("/robot/joint3_position_controller/command", Float64, queue_size=10) 
+    self.robot_joint4_pub = rospy.Publisher("/robot/joint4_position_controller/command", Float64, queue_size=10) 
+
 
     # set up publisher   
     # rospy.init_node('publisher_node',anonymous=True)
-    # self.jointAngle2 = rospy.Publisher("jointAngle2", Float64, queue_size=10)
-    # self.jointAngle4 = rospy.Publisher("jointAngle4", Float64, queue_size=10)
-    # self.actualJointAngle2 = rospy.Publisher("actualJointAngle2", Float64, queue_size=10)
-    # self.actualJointAngle4 = rospy.Publisher("actualJointAngle4", Float64, queue_size=10)
-    # self.targetZPosEst = rospy.Publisher("targetZPosEst", Float64, queue_size=10)
-    # self.targetXPosEst = rospy.Publisher("targetXPosEst", Float64, queue_size=10)
-    self.rate = rospy.Rate(10) #hz
+    self.targetZPosEst = rospy.Publisher("targetZPosEst", Float64, queue_size=10)
+    self.targetXPosEst = rospy.Publisher("targetXPosEst", Float64, queue_size=10)
+    self.rate = rospy.Rate(1) #hz
     self.time = rospy.get_time()
 
 
@@ -104,6 +94,7 @@ class image_converter:
       self.redCircleCache = []
       self.redCircleCache.append(pos)
 
+
   def cacheObjectPos(self, pos):
     if len(self.objectCache) < 1000:
       self.objectCache.append(pos)
@@ -111,37 +102,11 @@ class image_converter:
       self.objectCache = []
       self.objectCache.append(pos)
 
-  def getJointAngle3(self, data):
+  def getTargetYPos(self, data):
     try:
-      self.jointAngle3Data = data.data
+      self.targetYPosData = data.data
     except CvBridgeError as e:
-      print(e)
-
-
-  def getRobotJoint1State(self, data):
-    try:
-      self.robotJoint1State = data.data 
-    except CvBridgeError as e:
-      print(e)
-
-  def getRobotJoint2State(self, data):
-    try:
-      self.robotJoint2State = data.data 
-    except CvBridgeError as e:
-      print(e)
-
-  def getRobotJoint3State(self, data):
-    try:
-      self.robotJoint3State = data.data 
-    except CvBridgeError as e:
-      print(e)
-
-  def getRobotJoint4State(self, data):
-    try:
-      self.robotJoint4State = data.data 
-    except CvBridgeError as e:
-      print(e)
-
+      print(e)      
 
 
   # In this method you can focus on detecting the centre of the red circle
@@ -199,6 +164,26 @@ class image_converter:
       cx = int(M['m10'] / M['m00'])
       cy = int(M['m01'] / M['m00'])
       return np.array([cx, cy])
+
+
+  # Calculate the conversion from pixel to meter
+  def pixel2meterYellowToRed(self,image):
+      # Obtain the centre of each coloured blob
+      try:
+        circle1Pos = self.detect_yellow(image)
+        self.cacheYellowCirclePos(circle1Pos)
+      except:
+        circle1Pos = self.yellowCircleCache[-1]
+
+      try:
+        circle2Pos = self.detect_red(image)
+        self.cacheRedCirclePos(circle2Pos)
+      except:
+        circle2Pos = self.redCircleCache[-1]
+
+      # find the distance between two circles
+      dist = np.sum((circle1Pos - circle2Pos)**2)
+      return 9 / np.sqrt(dist)
 
 
   # Calculate the conversion from pixel to meter
@@ -286,88 +271,47 @@ class image_converter:
     # detect circles
     keypoints = detector.detect(res)
     if keypoints:
-      self.cacheObjectPos(keypoints[0].pt)
+      # self.cacheObjectPos(keypoints[0].pt)
       return keypoints[0].pt
     else:
-      # return 0,0 if object cannot be detected
       return self.objectCache[-1]
 
-  # A function to transform from one frame to another using 4 D-H parameters
-  def transform(self, theta, d, a, alpha):
-    rZ = np.array([
-      [np.cos(theta), -np.sin(theta), 0, 0], 
-      [np.sin(theta), np.cos(theta), 0, 0], 
-      [0, 0, 1, 0], 
-      [0, 0, 0, 1]])  
 
-    dZ = np.array([
-      [1, 0, 0, 0], 
-      [0, 1, 0, 0], 
-      [0, 0, 1, d], 
-      [0, 0, 0, 1]])  
+  def getObjectCoordinates(self, image):  
+    # get position of circular object
+    try:
+      objectPos = self.get_object_coordinates(image)
+      self.cacheObjectPos(objectPos)
+    except:
+      objectPos = self.objectCache[-1]
+    # position of first joint
+    try:
+      joint1Pos = self.detect_yellow(image)
+      self.cacheYellowCirclePos(joint1Pos)
+    except:
+      joint1Pos = self.yellowCircleCache[-1]
 
-    dA = np.array([
-      [1, 0, 0, a], 
-      [0, 1, 0, 0], 
-      [0, 0, 1, 0], 
-      [0, 0, 0, 1]])  
-
-    rX = np.array([
-      [1, 0, 0, 0], 
-      [0, np.cos(alpha), -np.sin(alpha), 0], 
-      [0, np.sin(alpha), np.cos(alpha), 0], 
-      [0, 0, 0, 1]])  
-
-    return rZ @ dZ @ dA @ rX
-   
-
-  def getJacobian(self, theta1, theta2, theta3, theta4):
-    # this expression is common in many derivatives
-    commonExpression = 3.5 + 3*np.cos(theta4)
-
-    # calculate derivatives with respect to joint angles
-    dxd1 = np.cos(theta1)*np.sin(theta3)*(commonExpression) + np.sin(theta1)*np.sin(theta2)*np.cos(theta3)*(commonExpression) + 3*np.sin(theta1)*np.cos(theta2)*np.sin(theta4)
-    dxd2 = 3*np.sin(theta2)*np.cos(theta1)*np.sin(theta4) - np.cos(theta1)*np.cos(theta2)*np.cos(theta3)*(commonExpression)    
-    dxd3 = np.cos(theta3)*np.sin(theta1)*(commonExpression) + np.sin(theta3)*np.cos(theta1)*np.sin(theta2)*(commonExpression)    
-    dxd4 = -3*np.cos(theta4)*np.cos(theta1)*np.cos(theta2) + 3*np.sin(theta4)*np.cos(theta1)*np.sin(theta2)*np.cos(theta3) - 3*np.sin(theta4)*np.sin(theta1)*np.sin(theta3)    
-    dyd1 = -np.cos(theta1)*np.sin(theta2)*np.cos(theta3)*(commonExpression) + np.sin(theta1)*np.sin(theta3)*(commonExpression) - 3*np.cos(theta1)*np.cos(theta2)*np.sin(theta4)    
-    dyd2 = 3*np.sin(theta2)*np.sin(theta1)*np.sin(theta4) - np.cos(theta2)*np.sin(theta1)*np.cos(theta3)*(commonExpression)    
-    dyd3 = np.sin(theta3)*np.sin(theta1)*np.sin(theta2)*(commonExpression) - np.cos(theta3)*np.cos(theta1)*(commonExpression)    
-    dyd4 = -3*np.cos(theta4)*np.sin(theta1)*np.cos(theta2) + 3*np.sin(theta4)*np.sin(theta1)*np.sin(theta2)*np.cos(theta3) + 3*np.sin(theta4)*np.cos(theta1)*np.sin(theta3)     
-    dzd1 = 0.0  
-    dzd2 = -np.sin(theta2)*np.cos(theta3)*(commonExpression) - 3*np.cos(theta2)*np.sin(theta4)
-    dzd3 = -np.sin(theta3)*np.cos(theta2)*(commonExpression)
-    dzd4 = -3*np.sin(theta4)*np.cos(theta2)*np.cos(theta3) - 3*np.cos(theta4)*np.sin(theta2)    
-
-    # combine derivatives into jacobian array
-    jacobian = np.array([
-      [dxd1, dxd2, dxd3, dxd4], 
-      [dyd1, dyd2, dyd3, dyd4], 
-      [dzd1, dzd2, dzd3, dzd4]])
-
-    return jacobian
+    # calculate distance from base to object
+    # x, y, z of target is based on base frame as defined through D-H
+    distBaseToObjectPixels = np.sum((joint1Pos - objectPos)**2)
+    distBaseToObjectMeters = self.meterPerPixel * np.sqrt(distBaseToObjectPixels)    
+    baseToTargetAngle = np.arctan2(joint1Pos[0]- objectPos[0], joint1Pos[1] - objectPos[1])
+    targetZ = distBaseToObjectMeters*np.cos(baseToTargetAngle)
+    targetX = distBaseToObjectMeters*np.sin(baseToTargetAngle)*-1   
+    
+    return targetX, targetZ 
 
 
+  def exportEstimatedTargetPosition(self, targetX, targetY, targetZ):
+    if self.exportTargetPosition == 1:
+      self.targetXYZPositionResults.append([
+        rospy.get_time(),
+        targetX, targetY, targetZ])
+      targetXYZPositionResultsDF = pd.DataFrame(
+        self.targetXYZPositionResults, 
+        columns=['time', 'targetX', 'targetY', 'targetZ'])
+      targetXYZPositionResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/targetPosition.csv')
 
-
-  def getEndEffectorXYZ(self, theta1, theta2, theta3, theta4):
-    # end effector matrix
-    endEffectorPosInBaseMatrix = self.getEndEffectorToBaseFrameMatrix(
-    theta1, theta2, theta3, theta4)
-
-    endEffectorPos = np.array([
-      round(endEffectorPosInBaseMatrix[0:3][0][3], 3) , 
-      round(endEffectorPosInBaseMatrix[0:3][1][3], 3) , 
-      round(endEffectorPosInBaseMatrix[0:3][2][3], 3)]) 
-
-    return endEffectorPos   
-
-  def getEndEffectorToBaseFrameMatrix(self,
-    theta1, theta2, theta3, theta4):
-    return self.transform(theta1, self.d1, self.a1, self.alpha1) @ \
-      self.transform(theta2 - np.pi/2, self.d2, self.a2, self.alpha2) @ \
-      self.transform(theta3, self.d3, self.a3, self.alpha3) @ \
-      self.transform(theta4, self.d4, self.a4, self.alpha4)
 
   # Recieve data from camera 1, process it, and publish
   def callback1(self,data):
@@ -378,49 +322,43 @@ class image_converter:
     except CvBridgeError as e:
       print(e)
 
-    # calculate metes per pixel and store value
-    if not self.meterPerPixel:
-      self.meterPerPixel = self.pixel2meterYellowToBlue(self.cv_image1)      
-    
-    # Uncomment if you want to save the image
-    #cv2.imwrite('image_copy.png', cv_image)
-
     # Publish the results
     try: 
       self.image_pub1.publish(self.bridge.cv2_to_imgmsg(self.cv_image1, "bgr8"))
     except CvBridgeError as e:
-      print(e)
+      print(e)      
+
+    # calculate meters per pixel and store value
+    if not self.meterPerPixel:
+      self.meterPerPixel = self.pixel2meterYellowToRed(self.cv_image1)      
+    
+    # Uncomment if you want to save the image
+    #cv2.imwrite('image_copy.png', cv_image)
+
+
+    #SECTION 2.2:
+
+    targetX, targetZ = self.getObjectCoordinates(self.cv_image1)
+    # target Y position:
+    targetY = self.targetYPosData 
+
+    # export data
+    if self.exportEstimatedTargetPositionData == 1:
+      self.exportEstimatedTargetPosition(targetX, targetY, targetZ)
+
+
+    # publish estimated position of target
+    self.package = Float64()
+    self.package.data = targetZ
+    self.targetZPosEst.publish(self.package)
+    self.package = Float64()
+    self.package.data = targetX
+    self.targetXPosEst.publish(self.package)
 
 
 
-    # get target distance
-
-    inputAngle3 = self.jointAngle3Data 
-
-
-
-    # SECTION 3.1
-
-    # ensure robot position is correct when all angles zero
-    # endEffectorStraight = self.getEndEffectorXYZ(0,0,0,0)
-    # assert endEffectorStraight[0] < 1.0e-10
-    # assert endEffectorStraight[1] < 1.0e-10
-    # assert endEffectorStraight[2] == 9.0
-
-    # print(endEffectorStraight)
-
-
-    # SECTION 3.2
-
-    # theta1, theta2, theta3, theta4 = 0.0, 0.0, 0.0, 0.0
-    # jacobian = self.getJacobian(theta1, theta2, theta3, theta4)
-
-
-
-    # random 
-
-    im2=cv2.imshow('window2', self.cv_image1)
-    cv2.waitKey(1)
+    # im2=cv2.imshow('window2', self.cv_image1)
+    # cv2.waitKey(1)
 
 
 # call the class
