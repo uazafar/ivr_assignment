@@ -21,7 +21,7 @@ class image_converter:
   def __init__(self):
 
     # change flag if want to export data
-    self.exportSecondaryTaskControlData = 0
+    self.exportSecondaryTaskControlData = 1
 
 
     # data array to store results
@@ -610,8 +610,10 @@ class image_converter:
 
     # P and Dgain
     P = 0.29
-    D = 0.05
-    K_p = np.array([[P, 0, 0],[0, P, 0], [0, 0, P]])    
+    D = 0.1
+    I = 0.05
+    K_d = np.array([[D, 0, 0],[0, D, 0], [0, 0, D]])   
+    K_p = np.array([[P, 0, 0],[0, P, 0], [0, 0, P]])
 
     # set joint angle values
     theta1 = self.t1
@@ -660,7 +662,7 @@ class image_converter:
     J_pseudo_inv = np.dot(J.transpose(), np.linalg.pinv((np.dot(J, J.transpose()))))
 
     q = np.array([theta1, theta2, theta3, theta4])
-    dq_d = np.dot(J_pseudo_inv, np.dot(K_p, self.secondary_error_d)  ) + np.dot((np.eye(4) - np.dot(J_pseudo_inv, J)), D*dw_dq  )
+    dq_d = np.dot(J_pseudo_inv, np.dot(K_d, self.secondary_error_d) + np.dot(K_p, self.secondary_error)  ) + np.dot((np.eye(4) - np.dot(J_pseudo_inv, J)), I*dw_dq  )
     q_d  = q + (dt * dq_d)
 
     # export results
