@@ -21,13 +21,12 @@ class image_converter:
   def __init__(self):
 
     # change flag if want to export data
-    self.exportClosedLoopControlUsingCVData = 0
     self.exportClosedLoopControlData = 0
 
     # data array to store results    
-    self.closedLoopControlResults = []
-    self.sinusoidAngleResults = []    
+    self.closedLoopControlResults = []    
 
+    # calculate the meters per pixel at first iteration
     self.meterPerPixel = None
 
     # define a cache to store positions of circles
@@ -43,8 +42,6 @@ class image_converter:
     self.d1, self.d2, self.d3, self.d4 = 2.5, 0.0, 0.0, 0.0
     self.a1, self.a2, self.a3, self.a4 = 0.0, 0.0, -3.5, -3.0
     self.alpha1, self.alpha2, self.alpha3, self.alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
-
-    self.theta1 = 0.0
 
     # initialise angles for closed loop control
     self.t1 = 0.0
@@ -97,6 +94,8 @@ class image_converter:
     self.rate = rospy.Rate(1) #hz
     self.time = rospy.get_time()
 
+
+  # functions to store historic positions of circles (max. 1000 positions)
 
   def cacheBlueCirclePos(self, pos):
     if len(self.blueCircleCache) < 1000:
@@ -295,7 +294,7 @@ class image_converter:
       dist = np.sum((circle1Pos - circle2Pos)**2)
       return 3.0 / np.sqrt(dist)
 
-
+  # function to get coordinates of orange sphere
   def get_object_coordinates(self, image):
     # Threshold the HSV image to get only orange colors (of object)
     mask = cv2.inRange(image, (0,20,100), (40,100,150))
@@ -357,7 +356,7 @@ class image_converter:
 
     return rZ @ dZ @ dA @ rX
    
-
+  # function to get jacobian
   def getJacobian(self, theta1, theta2, theta3, theta4):
     # this expression is common in many derivatives
     commonExpression = 3.5 + 3*np.cos(theta4)
@@ -398,6 +397,7 @@ class image_converter:
 
     return endEffectorPos   
 
+  # get full transformation matrix
   def getEndEffectorToBaseFrameMatrix(self,
     theta1, theta2, theta3, theta4):
     return self.transform(theta1, self.d1, self.a1, self.alpha1) @ \
@@ -407,7 +407,7 @@ class image_converter:
 
   # def getTheta1(X, Y, theta2, theta3, theta4):
     
-
+  # function to get joint 2 and 4 angles 
   def getTheta2And4(self, image):
     # get joint positions
     try:
@@ -438,6 +438,7 @@ class image_converter:
 
     return theta2, theta4
 
+  # function to get coordinates of orange sphere (in meters)
   def getObjectCoordinates(self, image):  
     # get position of circular object
     try:
@@ -512,7 +513,7 @@ class image_converter:
       print(e)   
 
 
-  # this function calculates the angles using integration - less stable but gives smoother results when it works
+  # this function calculates the angles using integration
   def closedLoopControl(self,
     endEffX,
     endEffY,
@@ -564,6 +565,7 @@ class image_converter:
     self.t3 = q_d[2]
     self.t4 = q_d[3]
 
+    # export results to csv
     if self.exportClosedLoopControlData == 1:
       self.closedLoopControlResults.append([
         rospy.get_time(), 
@@ -606,13 +608,13 @@ class image_converter:
     # SECTION 3.2
 
     # keep first joint angle zero
-    theta1 = self.theta1
-    theta2, theta4 = self.getTheta2And4(self.cv_image1)
-    try:
-      theta3 = float(self.jointAngle3Data)
-    # on first iteration, theta3 sometimes unavailable from topic
-    except:
-      theta3 = 0.0    
+    # theta1 = self.theta1
+    # theta2, theta4 = self.getTheta2And4(self.cv_image1)
+    # try:
+    #   theta3 = float(self.jointAngle3Data)
+    # # on first iteration, theta3 sometimes unavailable from topic
+    # except:
+    #   theta3 = 0.0    
 
     targetX, targetZ = self.getObjectCoordinates(self.cv_image1)
     # target Y position:
@@ -631,7 +633,7 @@ class image_converter:
     endEffY = self.endEffYPosData
 
 
-    # closed loop control using integration to find angles:
+    # closed loop control:
     self.closedLoopControl(
       endEffX,
       endEffY,

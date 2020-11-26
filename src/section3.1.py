@@ -20,7 +20,7 @@ class image_converter:
   # Defines publisher and subscriber
   def __init__(self):
 
-
+    # calculate the meters per pixel at first iteration
     self.meterPerPixel = None
 
     # define a cache to store positions of circles
@@ -72,6 +72,8 @@ class image_converter:
     self.rate = rospy.Rate(1) #hz
     self.time = rospy.get_time()
 
+
+  # functions to store historic positions of circles (max. 1000 positions)
 
   def cacheBlueCirclePos(self, pos):
     if len(self.blueCircleCache) < 1000:
@@ -314,6 +316,7 @@ class image_converter:
 
     return endEffectorPos   
 
+  # get full transformation matrix
   def getEndEffectorToBaseFrameMatrix(self,
     theta1, theta2, theta3, theta4):
     return self.transform(theta1, self.d1, self.a1, self.alpha1) @ \
@@ -322,7 +325,7 @@ class image_converter:
       self.transform(theta4, self.d4, self.a4, self.alpha4)
 
 
-  # this function calculates enf effector position using cv (not FK)
+  # this function calculates end effector position (in meters) using cv
   def getEndEffectorCoordinates(self, image):  
     # get position red circle
     try:
@@ -373,9 +376,6 @@ class image_converter:
 
 
     # SECTION 3.1
-
-    # robot position when all angles zero
-    # endEffectorStraight = self.getEndEffectorXYZ(0,0,0,0)
 
     # end effector position as calculated using cv:
     endEffX, endEffZ = self.getEndEffectorCoordinates(self.cv_image1)

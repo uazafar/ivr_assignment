@@ -15,9 +15,7 @@ class image_converter:
 
   # Defines publisher and subscriber
   def __init__(self):
-
-    # define flag to determine whether joints should be modulated using sinusoids
-    self.modulateJointsWithSinusoids = 0   
+  
 
     # define a cache to store positions of circles
     self.greenCircleCache = []
@@ -28,6 +26,7 @@ class image_converter:
     self.objectCache = [[400,400]]
     self.orangeSquareCache = [[500,354]]
 
+    # calculate the meters per pixel at first iteration
     self.meterPerPixel = None
 
     # initialize the node named image_processing
@@ -46,7 +45,6 @@ class image_converter:
     self.robot_joint4_pub = rospy.Publisher("/robot/joint4_position_controller/command", Float64, queue_size=10)   
 
     # set up publisher   
-    # rospy.init_node('publisher_node',anonymous=True)
     self.jointAngle3 = rospy.Publisher("jointAngle3", Float64, queue_size=10)
     self.targetYPosEst = rospy.Publisher("targetYPosEst", Float64, queue_size=10)
     self.orangeYPosEst = rospy.Publisher("orangeYPosEst", Float64, queue_size=10)
@@ -54,10 +52,10 @@ class image_converter:
     # position of end effector as calculated using cv
     self.endEffYPos = rospy.Publisher("endEffYPos", Float64, queue_size=10)
 
-    # self.actualJointAngle3 = rospy.Publisher("actualJointAngle3", Float64, queue_size=10)
-    # self.rate = rospy.Rate(10) #hz
     self.time = rospy.get_time()
 
+
+  # functions to store historic positions of circles (max. 1000 positions)
 
   def cacheBlueCirclePos(self, pos):
     if len(self.blueCircleCache) < 1000:
@@ -225,6 +223,7 @@ class image_converter:
       dist = np.sum((circle1Pos - circle2Pos)**2)
       return 3.0 / np.sqrt(dist)
 
+  # function to get coordinates of orange sphere
   def get_object_coordinates(self, image):
     # Threshold the HSV image to get only orange colors (of object)
     mask = cv2.inRange(image, (0,20,100), (40,100,150))
@@ -257,6 +256,7 @@ class image_converter:
       # return last known position of object
       return self.objectCache[-1]
 
+  # function to measure joint angle 3
   def getTheta3(self, image):
     # get joint positions
     try:
@@ -277,6 +277,7 @@ class image_converter:
 
 
 
+  # function to get coordinates of orange cube
   def get_orange_square_coordinates(self, image):
     # Threshold the HSV image to get only orange colors (of object)
     mask = cv2.inRange(image, (0,20,100), (40,100,150))
@@ -320,7 +321,7 @@ class image_converter:
     else:
       return self.orangeSquareCache[-1]   
 
-
+  # function to get coordinates of orange cube (in meters)
   def getOrangeSquareCoordinates(self, image):
     try:
       orangeSquare = self.get_orange_square_coordinates(image)
@@ -345,6 +346,7 @@ class image_converter:
     return orangeSquareY, orangeSquareZ   
 
 
+  # function to get coordinates of end effector (in meters)
   def getEndEffectorCoordinates(self, image):
     # get position red circle
     try:
@@ -369,7 +371,7 @@ class image_converter:
     
     return endEffY, endEffZ 
 
-
+  # function to get coordinates of orange sphere (in meters)
   def getObjectCoordinates(self, image):
     try:
       objectPos = self.get_object_coordinates(image)
@@ -426,7 +428,7 @@ class image_converter:
 
     orangeSquareY, _ = self.getOrangeSquareCoordinates(self.cv_image2)
 
-    # publish estimated position of orange square
+    # publish estimated position of orange cube
     self.package = Float64()
     self.package.data = orangeSquareY
     self.orangeYPosEst.publish(self.package)

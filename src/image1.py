@@ -59,8 +59,6 @@ class image_converter:
     self.a1, self.a2, self.a3, self.a4 = 0.0, 0.0, -3.5, -3.0
     self.alpha1, self.alpha2, self.alpha3, self.alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
 
-    self.theta1 = 0.0
-
     # store previous angles for section 4.2
     self.prev_theta1 = 0.0
     self.prev_theta2 = 0.0
@@ -612,63 +610,6 @@ class image_converter:
     except CvBridgeError as e:
       print(e)   
 
-  # this function uses cv to detect the angles
-  def closedLoopControlUsingCV(self, 
-    theta1, 
-    theta2, 
-    theta3, 
-    theta4,
-    targetX, 
-    targetY, 
-    targetZ):
-    # P gain
-    K_p = np.array([[5, 0, 0],[0, 5, 0], [0, 0, 5]])
-    # D gain
-    K_d = np.array([[0.01, 0.0, 0.0],[0.0, 0.01, 0.0], [0.0, 0.0, 0.01]])
-
-    # get current time step and calculate dt
-    cur_time = np.array([rospy.get_time()])
-    dt = cur_time - self.time_previous_step
-    self.time_previous_step = cur_time
-
-
-    theta1 = self.theta1
-    theta2, theta4 = self.getTheta2And4(self.cv_image1)
-    theta3  = float(self.jointAngle3Data)
-
-    # get end effector and target pos
-    endEffectorPosition = self.getEndEffectorXYZ(theta1, theta2, theta3, theta4)
-    targetPos = np.array([targetX, targetY, targetZ])
-
-    # estimate derivative of error
-    self.error_d = ((targetPos - endEffectorPosition) - self.error)/dt
-    self.error = targetPos - endEffectorPosition
-
-    # calculate jacobian
-    jacobian = self.getJacobian(theta1, theta2, theta3, theta4)
-
-    # calculate change in joint angles required
-    J_inv = np.linalg.pinv(jacobian)
-    q = np.array([theta1, theta2, theta3, theta4])
-    dq_d =np.dot(J_inv, ( np.dot(K_d,self.error_d.transpose()) + np.dot(K_p,self.error.transpose()) ) )
-    q_d = q + (dt * dq_d)
-
-    if self.exportClosedLoopControlUsingCVData == 1:
-      self.closedLoopControlResults.append([
-        rospy.get_time(), 
-        targetX, 
-        endEffectorPosition[0],
-        targetY,
-        endEffectorPosition[1],
-        targetZ,
-        endEffectorPosition[2]])
-      closedLoopControlResultsDF = pd.DataFrame(
-        self.closedLoopControlResults, 
-        columns=['time', 'targetX', 'endEffectorX', 'targetY', 'endEffectorY', 'targetZ', 'endEffectorZ'])
-      closedLoopControlResultsDF.to_csv(os.getcwd() + '/src/ivr_assignment/exports/closedLoopControlUsingCVResults.csv')
-
-    self.publishJointAngles(q_d[0], q_d[1], q_d[2], q_d[3])
-
 
   # this function calculates the angles using integration - less stable but gives smoother results when it works
   def closedLoopControl(self,
@@ -960,9 +901,6 @@ class image_converter:
 
     # SECTION 3.1
 
-    # robot position when all angles zero
-    # endEffectorStraight = self.getEndEffectorXYZ(0,0,0,0)
-
     # end effector position as calculated using cv:
     endEffX, endEffZ = self.getEndEffectorCoordinates(self.cv_image1)
     endEffY = self.endEffYPosData
@@ -971,9 +909,6 @@ class image_converter:
 
 
     # SECTION 3.2
-
-    # keep first joint angle zero
-    # theta1 = self.theta1
 
     # closed loop control:
     if self.controlRobotWithClosedLoopControl == 1:
@@ -984,16 +919,6 @@ class image_converter:
         targetX, 
         targetY, 
         targetZ)
-
-      # second function to perform control using cv to detect angles
-      # self.closedLoopControlUsingCV(    
-      #   theta1, 
-      #   theta2, 
-      #   theta3, 
-      #   theta4,
-      #   targetX, 
-      #   targetY, 
-      #   targetZ)
 
 
 

@@ -72,6 +72,8 @@ class image_converter:
     self.time = rospy.get_time()
 
 
+  # functions to store historic positions of circles (max. 1000 positions)
+
   def cacheBlueCirclePos(self, pos):
     if len(self.blueCircleCache) < 1000:
       self.blueCircleCache.append(pos)
@@ -256,7 +258,7 @@ class image_converter:
       return 3.0 / np.sqrt(dist)
 
 
-
+  # function to get joint 2 and 4 angles 
   def getTheta2And4(self, image):
     # get joint positions
     try:
@@ -288,7 +290,7 @@ class image_converter:
     return theta2, theta4
 
 
-
+  # function to expprt results to csv
   def exportDetectedSinusoidAngles(self, theta2, inputAngle2, theta3, inputAngle3, theta4, inputAngle4):
     if self.exportSinusoidAngles == 1:
       self.sinusoidAngleResults.append([

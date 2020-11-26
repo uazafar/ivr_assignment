@@ -21,15 +21,10 @@ class image_converter:
   def __init__(self):
 
     # change flag if want to export data
-    self.exportSecondaryTaskControlData = 1
+    self.exportSecondaryTaskControlData = 0
 
-
-    # data array to store results
-    self.targetXYZPositionResults = []    
-    self.closedLoopControlResults = []
-    self.sinusoidAngleResults = []    
+    # data array to store results     
     self.secondaryTaskControlResults = []
-    self.endEffectorPositions = []
 
     self.meterPerPixel = None
 
@@ -46,8 +41,6 @@ class image_converter:
     self.d1, self.d2, self.d3, self.d4 = 2.5, 0.0, 0.0, 0.0
     self.a1, self.a2, self.a3, self.a4 = 0.0, 0.0, -3.5, -3.0
     self.alpha1, self.alpha2, self.alpha3, self.alpha4 = np.pi/2, -np.pi/2, np.pi/2, 0.0
-
-    self.theta1 = 0.0
 
     # store previous angles for section 4.2
     self.prev_theta1 = 0.0
@@ -106,6 +99,8 @@ class image_converter:
     self.rate = rospy.Rate(1) #hz
     self.time = rospy.get_time()
 
+
+  # functions to store historic positions of circles (max. 1000 positions)
 
   def cacheBlueCirclePos(self, pos):
     if len(self.blueCircleCache) < 1000:
@@ -305,6 +300,7 @@ class image_converter:
       return 3.0 / np.sqrt(dist)
 
 
+  # function to get coordinates of orange sphere
   def get_object_coordinates(self, image):
     # Threshold the HSV image to get only orange colors (of object)
     mask = cv2.inRange(image, (0,20,100), (40,100,150))
@@ -337,6 +333,7 @@ class image_converter:
     else:
       return self.objectCache[-1]
 
+  # function to get coordinates of orange cube
   def get_orange_square_coordinates(self, image):
     # Threshold the HSV image to get only orange colors (of object)
     mask = cv2.inRange(image, (0,20,100), (40,100,150))
@@ -448,6 +445,7 @@ class image_converter:
 
     return endEffectorPos   
 
+  # get full transformation matrix
   def getEndEffectorToBaseFrameMatrix(self,
     theta1, theta2, theta3, theta4):
     return self.transform(theta1, self.d1, self.a1, self.alpha1) @ \
@@ -455,9 +453,7 @@ class image_converter:
       self.transform(theta3, self.d3, self.a3, self.alpha3) @ \
       self.transform(theta4, self.d4, self.a4, self.alpha4)
 
-  # def getTheta1(X, Y, theta2, theta3, theta4):
-    
-
+  # get joints 2 and 4 angles
   def getTheta2And4(self, image):
     # get joint positions
     try:
@@ -488,6 +484,7 @@ class image_converter:
 
     return theta2, theta4
 
+  # function to get coordinates of orange sphere (in meters)
   def getObjectCoordinates(self, image):  
     # get position of circular object
     try:
@@ -512,6 +509,7 @@ class image_converter:
 
     return targetX, targetZ 
 
+  # function to get coordinates of orange cube (in meters)
   def getOrangeSquareCoordinates(self, image):  
     # get position of circular object
     try:
@@ -536,7 +534,7 @@ class image_converter:
 
     return orangeSquareX, orangeSquareZ  
 
-  # this function calculates enf effector position using cv (not FK)
+  # this function calculates end effector position using cv
   def getEndEffectorCoordinates(self, image):  
     # get position red circle
     try:
@@ -585,13 +583,14 @@ class image_converter:
     except CvBridgeError as e:
       print(e)   
 
-
+  # calculate distance from end effector to orange cube in meters
   def getEndEffectorToSquareDistance(self, endEffX, endEffY, endEffZ, orangeX, orangeY, orangeZ):
     endEffectorPos = np.array([endEffX, endEffY, endEffZ])
     squarePos = np.array([orangeX, orangeY, orangeZ])
     distance = np.sqrt(np.sum((endEffectorPos-squarePos)**2))
     return distance
 
+  # null space controller
   def controlWithSecondaryTask(self,
     endEffX,
     endEffY,
@@ -608,7 +607,7 @@ class image_converter:
     dt = cur_time - self.time_previous_step
     self.time_previous_step = cur_time
 
-    # P and Dgain
+    # P and D gain
     P = 0.29
     D = 0.1
     I = 0.05
@@ -621,7 +620,7 @@ class image_converter:
     theta3 = self.t3
     theta4 = self.t4  
 
-    # get dq
+    # get dq (don't allow infinitesimal values)
     dq1 = theta1 - self.prev_theta1
     if dq1 < 0.1:
       dq1 = 0.1
@@ -635,6 +634,7 @@ class image_converter:
     if dq4 < 0.1:
       dq4 = 0.1  
    
+    # set previous values of theta
     self.prev_theta1 = theta1
     self.prev_theta2 = theta2
     self.prev_theta3 = theta3
@@ -645,7 +645,7 @@ class image_converter:
     distance_diff = distance - self.prev_distance
     self.prev_distance = distance
 
-    # calculate derivative of cost with respect to joint angles
+    # calculate derivative of cost with respect to joint angles analytically
     dw_dq = np.array([distance_diff/dq1, distance_diff/dq2, distance_diff/dq3, distance_diff/dq4])
 
     # get end effector and target pos
@@ -661,6 +661,7 @@ class image_converter:
     J_inv = np.linalg.pinv(J)
     J_pseudo_inv = np.dot(J.transpose(), np.linalg.pinv((np.dot(J, J.transpose()))))
 
+    # calculate new joint angles
     q = np.array([theta1, theta2, theta3, theta4])
     dq_d = np.dot(J_pseudo_inv, np.dot(K_d, self.secondary_error_d) + np.dot(K_p, self.secondary_error)  ) + np.dot((np.eye(4) - np.dot(J_pseudo_inv, J)), I*dw_dq  )
     q_d  = q + (dt * dq_d)
@@ -726,6 +727,8 @@ class image_converter:
     # end effector position as calculated using cv:
     endEffX, endEffZ = self.getEndEffectorCoordinates(self.cv_image1)
     endEffY = self.endEffYPosData
+
+    
 
     # SECTION 4.2
 

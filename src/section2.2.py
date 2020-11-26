@@ -20,11 +20,13 @@ class image_converter:
   # Defines publisher and subscriber
   def __init__(self):
 
+    # flag to determine if results should be exported
     self.exportEstimatedTargetPositionData = 0
 
     # data array to store results
     self.targetXYZPositionResults = []    
 
+    # functions to store historic positions of circles (max. 1000 positions)
     self.meterPerPixel = None
 
     # define a cache to store positions of circles
@@ -65,6 +67,8 @@ class image_converter:
     self.rate = rospy.Rate(1) #hz
     self.time = rospy.get_time()
 
+
+  # functions to store historic positions of circles (max. 1000 positions)
 
   def cacheBlueCirclePos(self, pos):
     if len(self.blueCircleCache) < 1000:
@@ -243,7 +247,7 @@ class image_converter:
       dist = np.sum((circle1Pos - circle2Pos)**2)
       return 3.0 / np.sqrt(dist)
 
-
+  # function to get coordinates of orange sphere
   def get_object_coordinates(self, image):
     # Threshold the HSV image to get only orange colors (of object)
     mask = cv2.inRange(image, (0,20,100), (40,100,150))
@@ -271,12 +275,13 @@ class image_converter:
     # detect circles
     keypoints = detector.detect(res)
     if keypoints:
-      # self.cacheObjectPos(keypoints[0].pt)
+      self.cacheObjectPos(keypoints[0].pt)
       return keypoints[0].pt
     else:
       return self.objectCache[-1]
 
 
+  # function to get coordinates of orange sphere (in meters)
   def getObjectCoordinates(self, image):  
     # get position of circular object
     try:
@@ -301,7 +306,7 @@ class image_converter:
     
     return targetX, targetZ 
 
-
+  # function to export results to csv
   def exportEstimatedTargetPosition(self, targetX, targetY, targetZ):
     if self.exportTargetPosition == 1:
       self.targetXYZPositionResults.append([
